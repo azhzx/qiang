@@ -408,6 +408,73 @@ fn P::parse_enum_type(self : P) -> Ty {
 }
 
 ///|
+fn P::eval_const(self : P, e : Expr) -> Int64 {
+  match e.kind {
+    ENum(n) => n
+    ESizeofT(t) => size_of(t, self.structs).to_int64()
+    EAlignofT(t) => align_of(t, self.structs).to_int64()
+    EBin(op, l, r) => {
+      let a = self.eval_const(l)
+      let b = self.eval_const(r)
+      match op {
+        "+" => a + b
+        "-" => a - b
+        "*" => a * b
+        "/" =>
+          if b == 0L {
+            abort("qpcc: division by zero in constant expression")
+          } else {
+            a / b
+          }
+        "%" =>
+          if b == 0L {
+            abort("qpcc: division by zero in constant expression")
+          } else {
+            a % b
+          }
+        "&" => a & b
+        "|" => a | b
+        "^" => a ^ b
+        "<<" => a << b.to_int()
+        ">>" => a >> b.to_int()
+        "==" => if a == b { 1L } else { 0L }
+        "!=" => if a != b { 1L } else { 0L }
+        "<" => if a < b { 1L } else { 0L }
+        "<=" => if a <= b { 1L } else { 0L }
+        ">" => if a > b { 1L } else { 0L }
+        ">=" => if a >= b { 1L } else { 0L }
+        _ => abort("qpcc: not a constant expression")
+      }
+    }
+    EUn(op, x) => {
+      let a = self.eval_const(x)
+      match op {
+        "-" => -a
+        "~" => -1L - a
+        "!" => if a == 0L { 1L } else { 0L }
+        _ => abort("qpcc: not a constant expression")
+      }
+    }
+    _ => abort("qpcc: not a constant expression")
+  }
+}
+
+///|
+fn P::parse_static_assert(self : P) -> Unit {
+  self.expect("(")
+  let e = self.parse_assign()
+  let v = self.eval_const(e)
+  if self.eat(",") {
+    let _ = self.adv()
+  }
+  self.expect(")")
+  self.expect(";")
+  if v == 0L {
+    abort("qpcc: static assertion failed")
+  }
+}
+
+///|
 fn P::lookup(self : P, name : String) -> Ty {
   match self.locals.get(name) {
     Some(t) => t
@@ -608,6 +675,41 @@ fn P::parse_unary(self : P) -> Expr {
       let e = self.parse_unary()
       mk(EUn("pre--", e), e.ty)
     }
+    TKw("_Generic") => {
+      self.pos = self.pos + 1
+      self.expect("(")
+      let ctrl = self.parse_assign()
+      let mut chosen : Expr? = None
+      let mut dflt : Expr? = None
+      self.expect(",")
+      let mut go = true
+      while go {
+        if self.eat_kw("default") {
+          self.expect(":")
+          dflt = Some(self.parse_assign())
+        } else {
+          let t = self.parse_type()
+          self.expect(":")
+          let e = self.parse_assign()
+          if t == ctrl.ty {
+            chosen = Some(e)
+          }
+        }
+        if self.eat(",") {
+          continue
+        }
+        self.expect(")")
+        go = false
+      }
+      match chosen {
+        Some(e) => e
+        None =>
+          match dflt {
+            Some(e) => e
+            None => abort("qpcc: no matching _Generic association")
+          }
+      }
+    }
     TKw("_Alignof") => {
       self.pos = self.pos + 1
       self.expect("(")
@@ -758,6 +860,10 @@ fn P::parse_block(self : P) -> Stmt {
 
 ///|
 fn P::parse_stmt(self : P) -> Stmt {
+  if self.eat_kw("_Static_assert") {
+    self.parse_static_assert()
+    return { kind: SBlock([]), }
+  }
   if self.at_type() {
     let is_td = self.eat_kw("typedef")
     let base = self.parse_type()
@@ -923,6 +1029,10 @@ fn P::parse_params(self : P) -> Array[Param] {
 
 ///|
 fn P::parse_top(self : P) -> Unit {
+  if self.eat_kw("_Static_assert") {
+    self.parse_static_assert()
+    return
+  }
   let is_td = self.eat_kw("typedef")
   let base = self.parse_type()
   if self.eat(";") {
