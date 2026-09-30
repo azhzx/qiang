@@ -597,6 +597,7 @@ fn collect_locals(s : Stmt, out : Array[(String, Ty)]) -> Unit {
         collect_locals(x, out)
       }
     SLocal(n, t, _) => out.push((n, t))
+    SAggInit(n, t, _) => out.push((n, t))
     SIf(_, a, b) => {
       collect_locals(a, out)
       match b {
@@ -765,6 +766,40 @@ fn Cg::gen_stmt(c : Cg, s : Stmt) -> Unit {
         }
         None => ()
       }
+    SAggInit(name, ty, items) => {
+      let base = match c.locals.get(name) {
+        Some(x) => x
+        None => abort("qpcc: unbound local")
+      }
+      for i in 0..<items.length() {
+        let (off, ety) = match ty {
+          TArr(e, _) => (i * size_of(e, c.structs), e)
+          TStruct(idx) => {
+            let m = c.structs[idx].members[i]
+            (m.2, m.1)
+          }
+          _ => (0, ty)
+        }
+        let addr = if off == 0 {
+          base
+        } else {
+          c.b.arith(
+            c.fid,
+            @types.Add,
+            @types.Kl,
+            base,
+            c.b.iconst(c.fid, off.to_int64()),
+          )
+        }
+        let v = c.gen_expr(items[i])
+        let vv = if is_lit(items[i]) {
+          v
+        } else {
+          c.coerce(v, cls_of(items[i].ty), cls_of(ety))
+        }
+        c.store_scalar(ety, vv, addr)
+      }
+    }
     SExpr(e) => {
       let _ = c.gen_expr(e)
     }

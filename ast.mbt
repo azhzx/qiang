@@ -68,6 +68,7 @@ pub(all) enum SK {
   SBreak
   SContinue
   SLocal(String, Ty, Expr?)
+  SAggInit(String, Ty, Array[Expr])
   SSwitch(Expr, Stmt)
   SCase(Int64)
   SDefault

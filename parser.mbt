@@ -10,6 +10,7 @@ priv struct P {
   structs : Array[StructDef]
   struct_tys : Map[String, Int]
   consts : Map[String, Int64]
+  typedefs : Map[String, Ty]
   funcs_list : Array[FuncDef]
   globals_list : Array[GlobalDef]
 }
@@ -102,14 +103,23 @@ fn ty_kw(t : Tok) -> Bool {
     | TKw("const")
     | TKw("volatile")
     | TKw("restrict")
-    | TKw("_Atomic") => true
+    | TKw("_Atomic")
+    | TKw("typedef")
+    | TKw("static")
+    | TKw("extern")
+    | TKw("auto")
+    | TKw("register")
+    | TKw("inline") => true
     _ => false
   }
 }
 
 ///|
 fn P::at_type(self : P) -> Bool {
-  ty_kw(self.peek())
+  match self.peek() {
+    TIdent(n) => self.typedefs.contains(n)
+    t => ty_kw(t)
+  }
 }
 
 ///|
@@ -121,7 +131,30 @@ fn P::at_label(self : P) -> Bool {
 }
 
 ///|
+fn P::ty_ahead(self : P) -> Bool {
+  match self.peek2() {
+    TIdent(n) => self.typedefs.contains(n)
+    t => ty_kw(t)
+  }
+}
+
+///|
 fn P::parse_type(self : P) -> Ty {
+  match self.peek() {
+    TIdent(n) =>
+      match self.typedefs.get(n) {
+        Some(t) => {
+          self.pos = self.pos + 1
+          let mut tt = t
+          while self.eat("*") {
+            tt = TPtr(tt)
+          }
+          return tt
+        }
+        None => ()
+      }
+    _ => ()
+  }
   let mut uns = false
   let mut n_long = 0
   let mut n_short = 0
@@ -165,8 +198,16 @@ fn P::parse_type(self : P) -> Ty {
       }
       TKw("struct") | TKw("union") => base = self.parse_struct_type()
       TKw("enum") => base = self.parse_enum_type()
-      TKw("const") | TKw("volatile") | TKw("restrict") | TKw("_Atomic") =>
-        self.pos = self.pos + 1
+      TKw("const")
+      | TKw("volatile")
+      | TKw("restrict")
+      | TKw("_Atomic")
+      | TKw("typedef")
+      | TKw("static")
+      | TKw("extern")
+      | TKw("auto")
+      | TKw("register")
+      | TKw("inline") => self.pos = self.pos + 1
       _ => go = false
     }
   }
@@ -519,7 +560,7 @@ fn P::parse_binary(self : P, min_prec : Int) -> Expr {
 fn P::parse_unary(self : P) -> Expr {
   match self.peek() {
     TPunct("(") =>
-      if ty_kw(self.peek2()) {
+      if self.ty_ahead() {
         self.pos = self.pos + 1
         let ty = self.parse_type()
         self.expect(")")
@@ -682,6 +723,20 @@ fn P::parse_primary(self : P) -> Expr {
 }
 
 ///|
+fn P::parse_init_list(self : P) -> Array[Expr] {
+  let out : Array[Expr] = []
+  self.expect("{")
+  while !self.eat("}") {
+    out.push(self.parse_assign())
+    if !self.eat(",") {
+      self.expect("}")
+      break
+    }
+  }
+  out
+}
+
+///|
 fn P::parse_block(self : P) -> Stmt {
   self.expect("{")
   let stmts : Array[Stmt] = []
@@ -697,12 +752,32 @@ fn P::parse_block(self : P) -> Stmt {
 ///|
 fn P::parse_stmt(self : P) -> Stmt {
   if self.at_type() {
+    let is_td = self.eat_kw("typedef")
     let base = self.parse_type()
     if self.eat(";") {
       { kind: SBlock([]), }
     } else {
       let (name, ty) = self.parse_declarator(base)
-      let init = if self.eat("=") { Some(self.parse_assign()) } else { None }
+      if is_td {
+        self.typedefs.set(name, ty)
+        while self.eat(",") {
+          let (n2, t2) = self.parse_declarator(base)
+          self.typedefs.set(n2, t2)
+        }
+        self.expect(";")
+        return { kind: SBlock([]), }
+      }
+      let init = if self.eat("=") {
+        if self.peek() == TPunct("{") {
+          let items = self.parse_init_list()
+          self.expect(";")
+          self.locals.set(name, ty)
+          return { kind: SAggInit(name, ty, items), }
+        }
+        Some(self.parse_assign())
+      } else {
+        None
+      }
       while self.eat(",") {
         let _ = self.parse_declarator(base)
       }
@@ -841,11 +916,21 @@ fn P::parse_params(self : P) -> Array[Param] {
 
 ///|
 fn P::parse_top(self : P) -> Unit {
+  let is_td = self.eat_kw("typedef")
   let base = self.parse_type()
   if self.eat(";") {
     return
   }
   let (name, ty) = self.parse_declarator(base)
+  if is_td {
+    self.typedefs.set(name, ty)
+    while self.eat(",") {
+      let (n2, t2) = self.parse_declarator(base)
+      self.typedefs.set(n2, t2)
+    }
+    self.expect(";")
+    return
+  }
   if self.eat("(") {
     // function: params follow, we already consumed "("
     self.pos = self.pos - 1
@@ -900,6 +985,7 @@ pub fn parse(src : String) -> Program {
     structs: [],
     struct_tys: Map::new(),
     consts: Map::new(),
+    typedefs: Map::new(),
     funcs_list: [],
     globals_list: [],
   }
