@@ -11,6 +11,8 @@ priv struct Cg {
   cont_blks : Array[Int]
   mut ret_ty : @sema.CType
   mut open : Bool
+  mut ret_sret : Bool
+  mut sret_ptr : Int
 }
 
 ///|
@@ -245,6 +247,51 @@ fn Cg::switch(c : Cg, blk : Int) -> Unit {
 }
 
 ///|
+fn is_composite(ty : @sema.CType) -> Bool {
+  match ty {
+    @sema.CStruct(_)
+    | @sema.CUnion(_)
+    | @sema.CArray(_, _)
+    | @sema.CVLA(_, _)
+    | @sema.CComplex(_) => true
+    _ => false
+  }
+}
+
+///|
+fn Cg::alloc_slot(c : Cg, size : Int) -> Int {
+  let sz = if size < 8 { 8 } else { (size + 7) / 8 * 8 }
+  c.b.emit_ins(
+    c.fid,
+    @types.Alloc8,
+    @types.Kl,
+    @types.Kl,
+    c.b.iconst(c.fid, sz.to_int64()),
+    -1,
+  )
+}
+
+///|
+fn Cg::emit_memcpy(c : Cg, dst : Int, src : Int, n : Int) -> Unit {
+  let _ = c.b.call(
+    c.fid,
+    "memcpy",
+    [
+      (@types.Kl, dst),
+      (@types.Kl, src),
+      (@types.Kl, c.b.iconst(c.fid, n.to_int64())),
+    ],
+    @ir_builder.Void,
+  )
+}
+
+///|
+/// Number of 8-byte register words a composite parameter occupies (<16B).
+fn param_words(sz : Int) -> Int {
+  (sz + 7) / 8
+}
+
+///|
 fn is_cmp(op : String) -> Bool {
   op == "==" || op == "!=" || op == "<" || op == "<=" || op == ">" || op == ">="
 }
@@ -302,7 +349,15 @@ fn Cg::gen_addr(c : Cg, e : @sema.TExpr) -> Int {
       }
       slot
     }
-    _ => abort("qpcc: not an lvalue")
+    _ =>
+      if is_composite(e.ty) {
+        c.gen_expr(e)
+      } else {
+        let v = c.gen_expr(e)
+        let slot = c.alloc_slot(size_of(e.ty, c.layouts))
+        c.store_scalar(e.ty, v, slot)
+        slot
+      }
   }
 }
 
@@ -363,10 +418,19 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
     }
     @sema.TAssign(l, r) => {
       let a = c.gen_addr(l)
-      let v = c.gen_expr(r)
-      let vv = c.convert(v, r.ty, l.ty)
-      c.store_scalar(l.ty, vv, a)
-      vv
+      if is_composite(l.ty) {
+        let src = c.gen_expr(r)
+        let sz = size_of(l.ty, c.layouts)
+        if sz > 0 {
+          c.emit_memcpy(a, src, sz)
+        }
+        a
+      } else {
+        let v = c.gen_expr(r)
+        let vv = c.convert(v, r.ty, l.ty)
+        c.store_scalar(l.ty, vv, a)
+        vv
+      }
     }
     @sema.TComma(a, b) => {
       let _ = c.gen_expr(a)
@@ -391,11 +455,19 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
         _ => false
       }
       let nfixed = ptypes.length()
+      let ret_aggr = is_composite(rty)
+      let sret_tmp = if ret_aggr {
+        c.alloc_slot(size_of(rty, c.layouts))
+      } else {
+        -1
+      }
       let arglist : Array[(@types.Class, Int)] = []
+      if ret_aggr {
+        arglist.push((@types.Kl, sret_tmp))
+      }
       let mut ai = 0
       for a in args {
-        let v = c.gen_expr(a)
-        let ty = if va {
+        let pty = if va {
           if ai < nfixed {
             ptypes[ai]
           } else {
@@ -406,33 +478,67 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
         } else {
           a.ty
         }
-        arglist.push((cls_of(ty), c.convert(v, a.ty, ty)))
+        if is_composite(pty) {
+          let sz = size_of(pty, c.layouts)
+          let addr = c.gen_expr(a)
+          if sz > 16 {
+            arglist.push((@types.Kl, addr))
+          } else {
+            let nw = param_words(sz)
+            for k in 0..<nw {
+              let off = k * 8
+              let chunk = if off == 0 {
+                c.b.load(c.fid, @types.Load, @types.Kl, addr)
+              } else {
+                let a2 = c.b.arith(
+                  c.fid,
+                  @types.Add,
+                  @types.Kl,
+                  addr,
+                  c.b.iconst(c.fid, off.to_int64()),
+                )
+                c.b.load(c.fid, @types.Load, @types.Kl, a2)
+              }
+              arglist.push((@types.Kl, chunk))
+            }
+          }
+        } else {
+          let v = c.gen_expr(a)
+          arglist.push((cls_of(pty), c.convert(v, a.ty, pty)))
+        }
         ai = ai + 1
       }
+      let call_ret = if ret_aggr { @ir_builder.Void } else { ret_of(rty) }
       let direct = match callee.ty {
         @sema.CFunc(_, _, _) => true
         _ => false
       }
-      if direct && name != "" {
+      let cv = if direct && name != "" {
         if va {
           let fixed : Array[(@types.Class, Int)] = []
           let rest : Array[(@types.Class, Int)] = []
+          let limit = nfixed + (if ret_aggr { 1 } else { 0 })
           let mut i = 0
           for a in arglist {
-            if i < nfixed {
+            if i < limit {
               fixed.push(a)
             } else {
               rest.push(a)
             }
             i = i + 1
           }
-          c.b.call_vararg(c.fid, name, fixed, rest, ret_of(rty))
+          c.b.call_vararg(c.fid, name, fixed, rest, call_ret)
         } else {
-          c.b.call(c.fid, name, arglist, ret_of(rty))
+          c.b.call(c.fid, name, arglist, call_ret)
         }
       } else {
         let fp = c.gen_expr(callee)
-        c.b.call_value(c.fid, fp, arglist, ret_of(rty))
+        c.b.call_value(c.fid, fp, arglist, call_ret)
+      }
+      if ret_aggr {
+        sret_tmp
+      } else {
+        cv
       }
     }
     @sema.TCond(cond, t, f) => {
@@ -931,9 +1037,17 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
             Some(x) => x
             None => abort("qpcc: unbound local " + name)
           }
-          let v = c.gen_expr(e)
-          let vv = c.convert(v, e.ty, ty)
-          c.store_scalar(ty, vv, a)
+          if is_composite(ty) {
+            let src = c.gen_expr(e)
+            let sz = size_of(ty, c.layouts)
+            if sz > 0 {
+              c.emit_memcpy(a, src, sz)
+            }
+          } else {
+            let v = c.gen_expr(e)
+            let vv = c.convert(v, e.ty, ty)
+            c.store_scalar(ty, vv, a)
+          }
         }
         None => ()
       }
@@ -966,14 +1080,22 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
     }
     @sema.KSExpr(None) => ()
     @sema.KSReturn(e) => {
-      let v = match e {
-        Some(x) => {
-          let val = c.gen_expr(x)
-          c.convert(val, x.ty, c.ret_ty)
-        }
-        None => -1
+      match e {
+        Some(x) =>
+          if c.ret_sret {
+            let src = c.gen_expr(x)
+            let sz = size_of(c.ret_ty, c.layouts)
+            if sz > 0 {
+              c.emit_memcpy(c.sret_ptr, src, sz)
+            }
+            c.b.ret(c.fid, -1)
+          } else {
+            let val = c.gen_expr(x)
+            let v = c.convert(val, x.ty, c.ret_ty)
+            c.b.ret(c.fid, v)
+          }
+        None => c.b.ret(c.fid, -1)
       }
-      c.b.ret(c.fid, v)
       c.open = false
     }
     @sema.KSIf(cond, then_s, els) => {
@@ -1138,11 +1260,37 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
     @sema.CFunc(r, ps, v) => (r, ps, v)
     _ => (@sema.CVoid, [], false)
   }
+  let ret_sret = is_composite(ret)
+  c.ret_sret = ret_sret
   let pclasses : Array[@types.Class] = []
-  for p in ptypes {
-    pclasses.push(cls_of(p))
+  if ret_sret {
+    pclasses.push(@types.Kl)
   }
-  let fid = c.b.add_func(f.name, ret_of(ret), pclasses, true)
+  for p in ptypes {
+    if is_composite(p) {
+      let sz = size_of(p, c.layouts)
+      if sz > 16 {
+        pclasses.push(@types.Kl)
+      } else {
+        let nw = param_words(sz)
+        for _k in 0..<nw {
+          pclasses.push(@types.Kl)
+        }
+      }
+    } else {
+      pclasses.push(cls_of(p))
+    }
+  }
+  let fid = c.b.add_func(
+    f.name,
+    if ret_sret {
+      @ir_builder.Void
+    } else {
+      ret_of(ret)
+    },
+    pclasses,
+    true,
+  )
   c.fid = fid
   c.ret_ty = ret
   c.open = true
@@ -1151,15 +1299,50 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
   c.labels = Map::new()
   c.break_blks.clear()
   c.cont_blks.clear()
+  let mut pi = 0
+  c.sret_ptr = if ret_sret {
+    let sp = c.b.param(fid, 0)
+    pi = 1
+    sp
+  } else {
+    -1
+  }
   for i in 0..<f.params.length() {
     let (n, ty) = f.params[i]
-    if n != "" {
-      let raw = size_of(ty, c.layouts)
-      let sz = if raw < 8 { 8 } else { raw }
-      let sv = c.b.iconst(fid, sz.to_int64())
-      let slot = c.b.emit_ins(fid, @types.Alloc8, @types.Kl, @types.Kl, sv, -1)
-      let pv = c.b.param(fid, i)
+    let raw = size_of(ty, c.layouts)
+    let slot = c.alloc_slot(raw)
+    if is_composite(ty) {
+      if raw > 16 {
+        let pv = c.b.param(fid, pi)
+        pi = pi + 1
+        if raw > 0 {
+          c.emit_memcpy(slot, pv, raw)
+        }
+      } else {
+        let nw = param_words(raw)
+        for k in 0..<nw {
+          let pv = c.b.param(fid, pi)
+          pi = pi + 1
+          let addr = if k == 0 {
+            slot
+          } else {
+            c.b.arith(
+              c.fid,
+              @types.Add,
+              @types.Kl,
+              slot,
+              c.b.iconst(c.fid, (k * 8).to_int64()),
+            )
+          }
+          c.b.store(c.fid, @types.Storel, @types.Kl, pv, addr)
+        }
+      }
+    } else {
+      let pv = c.b.param(fid, pi)
+      pi = pi + 1
       c.store_scalar(ty, pv, slot)
+    }
+    if n != "" {
       c.locals.set(n, slot)
       c.local_ty.set(n, ty)
     }
@@ -1183,11 +1366,15 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
   }
   c.gen_stmt(f.body)
   if c.open {
-    let v = match ret_of(c.ret_ty) {
-      @ir_builder.Void => -1
-      _ => c.zero_of(cls_of(c.ret_ty))
+    if c.ret_sret {
+      c.b.ret(fid, -1)
+    } else {
+      let v = match ret_of(c.ret_ty) {
+        @ir_builder.Void => -1
+        _ => c.zero_of(cls_of(c.ret_ty))
+      }
+      c.b.ret(fid, v)
     }
-    c.b.ret(fid, v)
     c.open = false
   }
 }
@@ -1221,6 +1408,8 @@ pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
     cont_blks: [],
     ret_ty: @sema.CVoid,
     open: false,
+    ret_sret: false,
+    sret_ptr: -1,
   }
   for f in p.funcs {
     c.gen_func(f)
