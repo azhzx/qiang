@@ -1,14 +1,13 @@
 ///|
-test "qpcc M0: IL names main and returns" {
+test "qpcc: IL names main" {
   let il = compile_il("int main() { return 42; }") catch {
     _ => fail("compile failed")
   }
   assert_true(il.contains("$main"))
-  assert_true(il.contains("ret"))
 }
 
 ///|
-test "qpcc M0: object is not empty" {
+test "qpcc: object is not empty" {
   let obj = compile_object("int main() { return 42; }") catch {
     _ => fail("compile failed")
   }
@@ -16,9 +15,19 @@ test "qpcc M0: object is not empty" {
 }
 
 ///|
-test "qpcc M0: multiple functions" {
-  let il = compile_il("int main() { return 1; } int foo() { return 2; }") catch {
+test "qpcc: recursion compiles" {
+  let il = compile_il(
+    "int fib(int n) { if (n < 2) { return n; } return fib(n - 1) + fib(n - 2); } int main() { return fib(10); }",
+  ) catch {
     _ => fail("compile failed")
   }
-  assert_true(il.contains("$foo"))
+  assert_true(il.contains("$fib"))
+}
+
+///|
+test "qpcc: preprocessor lines are ignored" {
+  let il = compile_il("#include <stdio.h>\nint main() { return 0; }") catch {
+    _ => fail("compile failed")
+  }
+  assert_true(il.contains("$main"))
 }

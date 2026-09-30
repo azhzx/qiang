@@ -2,41 +2,121 @@
 package "azhzx/qbe/qpcc"
 
 import {
+  "azhzx/qbe/ir_builder",
   "moonbitlang/core/debug",
 }
 
 // Values
+pub fn align_of(Ty, Array[StructDef]) -> Int
+
 pub fn compile_il(String) -> String raise
 
 pub fn compile_object(String) -> Bytes raise
 
+pub fn compile_program(Program) -> @ir_builder.Builder raise
+
+pub fn decay(Ty) -> Ty
+
+pub fn is_int(Ty) -> Bool
+
 pub fn parse(String) -> Program
 
-pub fn tokenize(String) -> Array[Token]
+pub fn size_of(Ty, Array[StructDef]) -> Int
+
+pub fn tokenize(String) -> Array[Tok]
 
 // Errors
 
 // Types and methods
+pub(all) enum EK {
+  ENum(Int64)
+  EVar(String)
+  EStr(Int)
+  EBin(String, Expr, Expr)
+  EUn(String, Expr)
+  EAssign(Expr, Expr)
+  ECall(String, Array[Expr])
+  ECond(Expr, Expr, Expr)
+  EMember(Expr, Int)
+  ECast(Expr)
+  EAddr(Expr)
+  EDeref(Expr)
+  ESizeofE(Expr)
+  ESizeofT(Ty)
+  EComma(Expr, Expr)
+}
+
+pub struct Expr {
+  kind : EK
+  ty : Ty
+}
+
 pub struct FuncDef {
   name : String
-  value : Int64
+  ret : Ty
+  params : Array[Param]
+  body : Stmt
+}
+
+pub struct GlobalDef {
+  name : String
+  ty : Ty
+  init : Int64?
+}
+
+pub struct Param {
+  name : String
+  ty : Ty
 }
 
 pub struct Program {
   funcs : Array[FuncDef]
+  globals : Array[GlobalDef]
+  strings : Array[String]
+  structs : Array[StructDef]
 }
 
-pub(all) enum Token {
-  TInt
-  TReturn
+pub(all) enum SK {
+  SExpr(Expr)
+  SReturn(Expr?)
+  SIf(Expr, Stmt, Stmt?)
+  SWhile(Expr, Stmt)
+  SFor(Stmt?, Expr?, Expr?, Stmt)
+  SDoWhile(Stmt, Expr)
+  SBlock(Array[Stmt])
+  SBreak
+  SContinue
+  SLocal(String, Ty, Expr?)
+}
+
+pub struct Stmt {
+  kind : SK
+}
+
+pub struct StructDef {
+  name : String
+  members : Array[(String, Ty, Int)]
+  size : Int
+  align : Int
+}
+
+pub(all) enum Tok {
   TIdent(String)
-  TNumber(Int64)
-  TLParen
-  TRParen
-  TLBrace
-  TRBrace
-  TSemicolon
+  TNum(Int64)
+  TStr(String)
+  TKw(String)
+  TPunct(String)
   TEof
+} derive(Eq, @debug.Debug)
+
+pub(all) enum Ty {
+  TVoid
+  TChar
+  TInt
+  TLong
+  TPtr(Ty)
+  TArr(Ty, Int)
+  TStruct(Int)
 } derive(Eq, @debug.Debug)
 
 // Type aliases
