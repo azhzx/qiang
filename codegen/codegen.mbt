@@ -16,6 +16,9 @@ priv struct Cg {
   mut scratch : Int
   mut bump : Int
   mut block_seq : Int
+  label_ids : Map[String, Int]
+  mut label_seq : Int
+  mut cur_labels : Array[String]
 }
 
 ///|
@@ -406,7 +409,14 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
         c.b.fconst(c.fid, v)
       }
     @sema.TStr(i) => c.b.global(c.fid, c.strings[i])
-    @sema.TLabelAddr(_) => c.b.iconst(c.fid, 0L)
+    @sema.TLabelAddr(n) =>
+      c.b.iconst(
+        c.fid,
+        match c.label_ids.get(n) {
+          Some(x) => x.to_int64()
+          None => 0L
+        },
+      )
     @sema.TVar(n) =>
       match c.locals.get(n) {
         Some(a) => {
@@ -1319,7 +1329,37 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
       c.b.jmp(c.fid, blk, [])
       c.open = false
     }
-    @sema.KSGotoPtr(_) => abort("qpcc: computed goto is not supported")
+    @sema.KSGotoPtr(e) => {
+      let v = c.gen_expr(e)
+      let end = c.new_block("goto.end")
+      let labels = c.cur_labels
+      let n = labels.length()
+      let mut i = 0
+      while i < n {
+        let name = labels[i]
+        let blk = match c.labels.get(name) {
+          Some(b) => b
+          None => end
+        }
+        let id = match c.label_ids.get(name) {
+          Some(x) => x
+          None => 0
+        }
+        let cc = c.b.cmp(
+          c.fid,
+          @types.Ceql,
+          @types.Kl,
+          v,
+          c.b.iconst(c.fid, id.to_int64()),
+        )
+        let next = if i + 1 < n { c.new_block("goto.next") } else { end }
+        c.b.jnz(c.fid, cc, blk, [], next, [])
+        c.open = false
+        c.switch(next)
+        i = i + 1
+      }
+      c.switch(end)
+    }
     @sema.KSLabel(n, b) => {
       let blk = match c.labels.get(n) {
         Some(x) => x
@@ -1454,11 +1494,17 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
   }
   let label_names : Array[String] = []
   collect_labels(f.body, label_names)
+  c.cur_labels = []
   for n in label_names {
     if !c.labels.contains(n) {
       let blk = c.b.add_block(fid, "label_" + n)
       c.labels.set(n, blk)
     }
+    if !c.label_ids.contains(n) {
+      c.label_ids.set(n, c.label_seq)
+      c.label_seq = c.label_seq + 1
+    }
+    c.cur_labels.push(n)
   }
   c.gen_stmt(f.body)
   if c.open {
@@ -1558,6 +1604,9 @@ pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
     scratch: -1,
     bump: 0,
     block_seq: 0,
+    label_ids: Map::new(),
+    label_seq: 0,
+    cur_labels: [],
   }
   for f in p.funcs {
     c.gen_func(f)
