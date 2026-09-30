@@ -403,6 +403,9 @@ fn check_binary(
     let lt = decay(tl.ty)
     let rt = decay(tr.ty)
     let ty = match (lt, rt) {
+      (CComplex(a), CComplex(b)) => CComplex(promote_arith(a, b))
+      (CComplex(a), _) => CComplex(promote_arith(a, rt))
+      (_, CComplex(b)) => CComplex(promote_arith(lt, b))
       (CPtr(e), _) => if op == "+" || op == "-" { CPtr(e) } else { lt }
       (_, CPtr(e)) => CPtr(e)
       _ => promote_arith(lt, rt)

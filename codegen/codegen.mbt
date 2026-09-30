@@ -346,6 +346,7 @@ fn elem_of(ty : @sema.CType) -> @sema.CType {
   match ty {
     @sema.CPtr(t) => t
     @sema.CArray(t, _) => t
+    @sema.CComplex(t) => t
     _ => ty
   }
 }
@@ -509,7 +510,21 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
         }
         _ => {
           let a = c.gen_addr(l)
-          if is_composite(l.ty) {
+          if is_complex_ty(l.ty) && !is_composite(r.ty) {
+            let elem = elem_of(l.ty)
+            let esz = size_of(elem, c.layouts)
+            let v = c.convert(c.gen_expr(r), r.ty, elem)
+            c.store_scalar(elem, v, a)
+            let off = c.b.arith(
+              c.fid,
+              @types.Add,
+              @types.Kl,
+              a,
+              c.b.iconst(c.fid, esz.to_int64()),
+            )
+            c.store_scalar(elem, c.zero_elem(elem), off)
+            a
+          } else if is_composite(l.ty) {
             let src = c.gen_expr(r)
             let sz = size_of(l.ty, c.layouts)
             if sz > 0 {
@@ -768,7 +783,156 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
 }
 
 ///|
+fn is_complex_ty(ty : @sema.CType) -> Bool {
+  match ty {
+    @sema.CComplex(_) => true
+    _ => false
+  }
+}
+
+///|
+fn Cg::zero_elem(c : Cg, elem : @sema.CType) -> Int {
+  if is_flt(elem) {
+    c.b.fconst(c.fid, 0.0)
+  } else {
+    c.b.iconst(c.fid, 0L)
+  }
+}
+
+///|
+fn Cg::complex_operand(
+  c : Cg,
+  x : @sema.TExpr,
+  elem : @sema.CType,
+) -> (Int, Int) {
+  if is_complex_ty(x.ty) {
+    let addr = c.gen_expr(x)
+    let esz = size_of(elem, c.layouts)
+    let re = c.load_scalar(elem, addr)
+    let off = c.b.arith(
+      c.fid,
+      @types.Add,
+      @types.Kl,
+      addr,
+      c.b.iconst(c.fid, esz.to_int64()),
+    )
+    let im = c.load_scalar(elem, off)
+    (re, im)
+  } else {
+    (c.convert(c.gen_expr(x), x.ty, elem), c.zero_elem(elem))
+  }
+}
+
+///|
+fn Cg::gen_complex_bin(
+  c : Cg,
+  op : String,
+  l : @sema.TExpr,
+  r : @sema.TExpr,
+) -> Int {
+  let cty = if is_complex_ty(l.ty) { l.ty } else { r.ty }
+  let elem = elem_of(cty)
+  let cls = cls_of(elem)
+  let esz = size_of(elem, c.layouts)
+  let (ar, ai) = c.complex_operand(l, elem)
+  let (br, bi) = c.complex_operand(r, elem)
+  if is_cmp(op) {
+    let cc = cmp_op(op, cls, false, is_flt(elem))
+    let r1 = c.b.cmp(c.fid, cc, cls, ar, br)
+    let r2 = c.b.cmp(c.fid, cc, cls, ai, bi)
+    let o = if op == "!=" { @types.Or } else { @types.And }
+    return c.b.arith(c.fid, o, @types.Kw, r1, r2)
+  }
+  let add = @types.Add
+  let sub = @types.Sub
+  let mul = @types.Mul
+  let div = @types.Div
+  let real = if op == "+" {
+    c.b.arith(c.fid, add, cls, ar, br)
+  } else if op == "-" {
+    c.b.arith(c.fid, sub, cls, ar, br)
+  } else if op == "*" {
+    c.b.arith(
+      c.fid,
+      sub,
+      cls,
+      c.b.arith(c.fid, mul, cls, ar, br),
+      c.b.arith(c.fid, mul, cls, ai, bi),
+    )
+  } else {
+    let d = c.b.arith(
+      c.fid,
+      add,
+      cls,
+      c.b.arith(c.fid, mul, cls, br, br),
+      c.b.arith(c.fid, mul, cls, bi, bi),
+    )
+    c.b.arith(
+      c.fid,
+      div,
+      cls,
+      c.b.arith(
+        c.fid,
+        add,
+        cls,
+        c.b.arith(c.fid, mul, cls, ar, br),
+        c.b.arith(c.fid, mul, cls, ai, bi),
+      ),
+      d,
+    )
+  }
+  let imag = if op == "+" {
+    c.b.arith(c.fid, add, cls, ai, bi)
+  } else if op == "-" {
+    c.b.arith(c.fid, sub, cls, ai, bi)
+  } else if op == "*" {
+    c.b.arith(
+      c.fid,
+      add,
+      cls,
+      c.b.arith(c.fid, mul, cls, ar, bi),
+      c.b.arith(c.fid, mul, cls, ai, br),
+    )
+  } else {
+    let d = c.b.arith(
+      c.fid,
+      add,
+      cls,
+      c.b.arith(c.fid, mul, cls, br, br),
+      c.b.arith(c.fid, mul, cls, bi, bi),
+    )
+    c.b.arith(
+      c.fid,
+      div,
+      cls,
+      c.b.arith(
+        c.fid,
+        sub,
+        cls,
+        c.b.arith(c.fid, mul, cls, ai, br),
+        c.b.arith(c.fid, mul, cls, ar, bi),
+      ),
+      d,
+    )
+  }
+  let slot = c.alloc_slot(esz * 2)
+  c.store_scalar(elem, real, slot)
+  let off = c.b.arith(
+    c.fid,
+    @types.Add,
+    @types.Kl,
+    slot,
+    c.b.iconst(c.fid, esz.to_int64()),
+  )
+  c.store_scalar(elem, imag, off)
+  slot
+}
+
+///|
 fn Cg::gen_bin(c : Cg, op : String, l : @sema.TExpr, r : @sema.TExpr) -> Int {
+  if is_complex_ty(l.ty) || is_complex_ty(r.ty) {
+    return c.gen_complex_bin(op, l, r)
+  }
   let lt = @sema.decay(l.ty)
   let rt = @sema.decay(r.ty)
   let cls = wider(lt, rt)
@@ -895,6 +1059,25 @@ fn Cg::truncate(c : Cg, ty : @sema.CType, v : Int) -> Int {
 
 ///|
 fn Cg::convert(c : Cg, v : Int, from : @sema.CType, to : @sema.CType) -> Int {
+  if is_complex_ty(from) && !is_complex_ty(to) {
+    let elem = elem_of(from)
+    return c.convert(c.load_scalar(elem, v), elem, to)
+  }
+  if is_complex_ty(to) && !is_complex_ty(from) {
+    let elem = elem_of(to)
+    let esz = size_of(elem, c.layouts)
+    let slot = c.alloc_slot(esz * 2)
+    c.store_scalar(elem, c.convert(v, from, elem), slot)
+    let off = c.b.arith(
+      c.fid,
+      @types.Add,
+      @types.Kl,
+      slot,
+      c.b.iconst(c.fid, esz.to_int64()),
+    )
+    c.store_scalar(elem, c.zero_elem(elem), off)
+    return slot
+  }
   c.truncate(to, c.coerce(v, cls_of(from), cls_of(to)))
 }
 
@@ -1186,7 +1369,20 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
             Some(x) => x
             None => abort("qpcc: unbound local " + name)
           }
-          if is_composite(ty) {
+          if is_complex_ty(ty) && !is_composite(e.ty) {
+            let elem = elem_of(ty)
+            let esz = size_of(elem, c.layouts)
+            let v = c.convert(c.gen_expr(e), e.ty, elem)
+            c.store_scalar(elem, v, a)
+            let off = c.b.arith(
+              c.fid,
+              @types.Add,
+              @types.Kl,
+              a,
+              c.b.iconst(c.fid, esz.to_int64()),
+            )
+            c.store_scalar(elem, c.zero_elem(elem), off)
+          } else if is_composite(ty) {
             let src = c.gen_expr(e)
             let sz = size_of(ty, c.layouts)
             if sz > 0 {
