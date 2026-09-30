@@ -148,6 +148,35 @@ fn collect_expr_locals(e : TExpr, out : Array[(String, CType)]) -> Unit {
 }
 
 ///|
+
+///|
+// Complete an array type with an unspecified bound from its initializer.
+fn complete_array(ty : CType, init : @front.Initializer, ctx : Ctx) -> CType {
+  match (ty, init) {
+    (CArray(elem, 0), @front.IList(items)) => {
+      let mut n = 0
+      let mut idx = 0
+      for it in items {
+        let k = if it.designators.length() > 0 {
+          match it.designators[0] {
+            @front.DIndex(e) => const_eval_int(e, ctx).to_int()
+            _ => idx
+          }
+        } else {
+          idx
+        }
+        if k + 1 > n {
+          n = k + 1
+        }
+        idx = idx + 1
+      }
+      CArray(elem, n)
+    }
+    _ => ty
+  }
+}
+
+///|
 fn check_local_decl(
   spec : @front.DeclSpec,
   decls : Array[@front.InitDeclarator],
@@ -157,7 +186,11 @@ fn check_local_decl(
   let base = declspec_to_type(spec, ctx)
   let is_td = has_storage(spec, "typedef")
   for idecl in decls {
-    let ty = build_type(idecl.decl, base, ctx)
+    let mut ty = build_type(idecl.decl, base, ctx)
+    match idecl.init {
+      Some(init) => ty = complete_array(ty, init, ctx)
+      None => ()
+    }
     match decl_name(idecl.decl) {
       Some(n) =>
         if is_td {
