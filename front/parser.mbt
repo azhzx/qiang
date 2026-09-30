@@ -7,6 +7,7 @@ priv struct Parser {
   toks : Array[Token]
   mut pos : Int
   typedefs : Map[String, Bool]
+  mode : StdMode
 }
 
 ///|
@@ -108,7 +109,8 @@ fn is_qualifier_kw(k : String) -> Bool {
     | "_Nonnull"
     | "_Null_unspecified"
     | "__nullable"
-    | "__nonnull" => true
+    | "__nonnull"
+    | "constexpr" => true
     _ => false
   }
 }
@@ -132,6 +134,7 @@ fn is_basic_type_kw(k : String) -> Bool {
     | "__signed"
     | "__signed__"
     | "__auto_type"
+    | "bool"
     | "__builtin_va_list"
     | "__builtin_ms_va_list" => true
     _ => false
@@ -158,6 +161,10 @@ fn Parser::is_type_start(self : Parser) -> Bool {
       k == "typeof" ||
       k == "__typeof" ||
       k == "__typeof__" ||
+      k == "typeof_unqual" ||
+      k == "_BitInt" ||
+      k == "alignas" ||
+      k == "thread_local" ||
       k == "_Atomic" ||
       k == "_Alignas" ||
       k == "__attribute" ||
@@ -245,6 +252,42 @@ fn Parser::skip_balanced(
 }
 
 ///|
+fn Parser::at_c23_attr(self : Parser) -> Bool {
+  self.mode == C23 && self.at_punct("[") && self.peek_n(1).kind is Punct("[")
+}
+
+///|
+fn Parser::parse_c23_attrs(self : Parser) -> Array[String] {
+  let out : Array[String] = []
+  while self.at_c23_attr() {
+    self.pos = self.pos + 2
+    let sb = StringBuilder::new()
+    let mut depth = 1
+    while depth > 0 {
+      if self.at_punct("[") && self.peek_n(1).kind is Punct("[") {
+        depth = depth + 1
+        sb.write_string("[[ ")
+        self.pos = self.pos + 2
+      } else if self.at_punct("]") && self.peek_n(1).kind is Punct("]") {
+        depth = depth - 1
+        if depth > 0 {
+          sb.write_string("]] ")
+        }
+        self.pos = self.pos + 2
+      } else if self.peek().kind is Eof {
+        depth = 0
+      } else {
+        sb.write_string(self.peek().text())
+        sb.write_string(" ")
+        self.pos = self.pos + 1
+      }
+    }
+    out.push(sb.to_string())
+  }
+  out
+}
+
+///|
 fn Parser::parse_attribute(self : Parser) -> String {
   self.pos = self.pos + 1
   if self.at_punct("(") {
@@ -320,7 +363,7 @@ fn Parser::parse_struct_body(self : Parser) -> Array[StructDecl] {
     if self.eat_punct(";") {
       continue
     }
-    if self.at_kw("_Static_assert") {
+    if self.at_kw("_Static_assert") || self.at_kw("static_assert") {
       self.pos = self.pos + 1
       self.expect_punct("(")
       let e = self.parse_assign_expr()
@@ -408,7 +451,8 @@ fn Parser::eat_storage(self : Parser, out : Array[String]) -> Bool {
         | "auto"
         | "register"
         | "_Thread_local"
-        | "__thread" => {
+        | "__thread"
+        | "thread_local" => {
           out.push(k)
           self.pos = self.pos + 1
           true
@@ -432,7 +476,8 @@ fn Parser::parse_declspec(self : Parser) -> DeclSpec {
     match self.peek().kind {
       Keyword(k) =>
         if is_qualifier_kw(k) ||
-          (k == "_Atomic" && !(self.peek_n(1).kind is Punct("("))) {
+          (k == "_Atomic" && !(self.peek_n(1).kind is Punct("("))) ||
+          k == "constexpr" {
           qualifiers.push(k)
           self.pos = self.pos + 1
         } else if self.eat_storage(storage) {
@@ -483,7 +528,10 @@ fn Parser::parse_declspec(self : Parser) -> DeclSpec {
             []
           }
           type_specs.push(TEnum(tag, body))
-        } else if k == "typeof" || k == "__typeof" || k == "__typeof__" {
+        } else if k == "typeof" ||
+          k == "__typeof" ||
+          k == "__typeof__" ||
+          k == "typeof_unqual" {
           type_specs.push(self.parse_typeof())
         } else if k == "_Atomic" && self.peek_n(1).kind is Punct("(") {
           self.pos = self.pos + 1
@@ -492,7 +540,13 @@ fn Parser::parse_declspec(self : Parser) -> DeclSpec {
           let d = self.parse_declarator()
           self.expect_punct(")")
           type_specs.push(TAtomicSpec(spec, d))
-        } else if k == "_Alignas" {
+        } else if k == "_BitInt" {
+          self.pos = self.pos + 1
+          self.expect_punct("(")
+          let e = self.parse_const_expr()
+          self.expect_punct(")")
+          type_specs.push(TBitInt(e))
+        } else if k == "_Alignas" || k == "alignas" {
           self.pos = self.pos + 1
           self.expect_punct("(")
           if self.is_type_start() {
@@ -507,6 +561,15 @@ fn Parser::parse_declspec(self : Parser) -> DeclSpec {
           attrs.push(self.parse_attribute())
         } else if k == "__extension__" {
           self.pos = self.pos + 1
+        } else {
+          go = false
+        }
+      Punct("[") =>
+        if self.mode == C23 && self.peek_n(1).kind is Punct("[") {
+          let a = self.parse_c23_attrs()
+          for x in a {
+            attrs.push(x)
+          }
         } else {
           go = false
         }
@@ -718,7 +781,7 @@ fn decl_name(d : Declarator) -> String? {
 ///|
 fn Parser::parse_external_decl(self : Parser) -> ExternalDecl {
   self.skip_attrs()
-  if self.at_kw("_Static_assert") {
+  if self.at_kw("_Static_assert") || self.at_kw("static_assert") {
     self.pos = self.pos + 1
     self.expect_punct("(")
     let e = self.parse_assign_expr()
@@ -810,6 +873,9 @@ fn Parser::parse_compound(self : Parser) -> Stmt {
   while !self.eat_punct("}") {
     if self.peek().kind is Eof {
       self.fail("unexpected end of file in block")
+    }
+    if self.at_c23_attr() {
+      let _ = self.parse_c23_attrs()
     }
     if self.at_decl_start() &&
       !(self.peek().kind is Ident(_) && self.peek_n(1).kind is Punct(":")) {
@@ -943,7 +1009,7 @@ fn Parser::parse_stmt(self : Parser) -> Stmt {
   } else if self.eat_kw("default") {
     self.expect_punct(":")
     SDefault(self.parse_stmt_opt())
-  } else if self.at_kw("_Static_assert") {
+  } else if self.at_kw("_Static_assert") || self.at_kw("static_assert") {
     self.pos = self.pos + 1
     self.expect_punct("(")
     let e = self.parse_assign_expr()
@@ -1209,7 +1275,10 @@ fn Parser::parse_unary_expr(self : Parser) -> Expr {
         ESizeofExpr(self.parse_unary_expr())
       }
     }
-    Keyword("_Alignof") | Keyword("__alignof") | Keyword("__alignof__") => {
+    Keyword("_Alignof")
+    | Keyword("__alignof")
+    | Keyword("__alignof__")
+    | Keyword("alignof") => {
       self.pos = self.pos + 1
       if self.eat_punct("(") {
         if self.is_type_start() || self.at_typedef() {
@@ -1390,6 +1459,18 @@ fn Parser::parse_primary_expr(self : Parser) -> Expr {
       self.pos = self.pos + 1
       EIdent(n)
     }
+    Keyword("true") => {
+      self.pos = self.pos + 1
+      EBool(true)
+    }
+    Keyword("false") => {
+      self.pos = self.pos + 1
+      EBool(false)
+    }
+    Keyword("nullptr") => {
+      self.pos = self.pos + 1
+      ENullptr
+    }
     Punct("(") => {
       self.pos = self.pos + 1
       let e = self.parse_expr()
@@ -1421,9 +1502,9 @@ fn empty_declspec() -> DeclSpec {
 }
 
 ///|
-pub fn parse(src : String) -> TranslationUnit {
-  let toks = tokenize(src)
-  let p = Parser::{ toks, pos: 0, typedefs: Map::new(), }
+pub fn parse(src : String, mode? : StdMode = C11) -> TranslationUnit {
+  let toks = tokenize(src, mode)
+  let p = Parser::{ toks, pos: 0, typedefs: Map::new(), mode, }
   let decls : Array[ExternalDecl] = []
   while !(p.peek().kind is Eof) {
     decls.push(p.parse_external_decl())

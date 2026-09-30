@@ -6,11 +6,15 @@ import {
 }
 
 // Values
+pub fn is_c23_keyword(String) -> Bool
+
 pub fn is_keyword(String) -> Bool
 
-pub fn parse(String) -> TranslationUnit
+pub fn is_keyword_mode(String, StdMode) -> Bool
 
-pub fn tokenize(String) -> Array[Token]
+pub fn parse(String, mode? : StdMode) -> TranslationUnit
+
+pub fn tokenize(String, StdMode) -> Array[Token]
 
 // Errors
 
@@ -64,6 +68,8 @@ pub(all) enum Expr {
   EChar(String)
   EString(Array[String])
   EIdent(String)
+  EBool(Bool)
+  ENullptr
   EBinary(String, Expr, Expr)
   EUnary(String, Expr)
   EPostfix(String, Expr)
@@ -122,6 +128,11 @@ pub struct ParamDecl {
   spec : DeclSpec
   decl : Declarator
 }
+
+pub(all) enum StdMode {
+  C11
+  C23
+} derive(Eq)
 
 pub(all) enum Stmt {
   SCompound(Array[BlockItem])
@@ -185,6 +196,7 @@ pub(all) enum TypeSpec {
   TTypeofExpr(Expr)
   TTypeofType(DeclSpec, Declarator)
   TAtomicSpec(DeclSpec, Declarator)
+  TBitInt(Expr)
 }
 
 // Type aliases

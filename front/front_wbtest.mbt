@@ -37,3 +37,45 @@ test "front: parse _Generic, _Static_assert, typeof, attributes" {
   )
   assert_true(true)
 }
+
+///|
+test "front: C23 keywords in C23 mode" {
+  let _tu = parse(
+    "bool b = true; int main() { constexpr int x = 1; return nullptr == 0; }",
+    mode=C23,
+  )
+  assert_true(true)
+}
+
+///|
+test "front: C23-only names remain identifiers in C11 mode" {
+  let _tu = parse("int bool = 1; int main() { return bool; }")
+  assert_true(true)
+}
+
+///|
+test "front: C23 attributes, _BitInt and static_assert" {
+  let _tu = parse(
+    "[[noreturn]] void f(void); _BitInt(8) g; static_assert(1, \"x\");",
+    mode=C23,
+  )
+  assert_true(true)
+}
+
+///|
+test "front: C23 typeof_unqual, alignas and alignof" {
+  let _tu = parse(
+    "int main() { typeof_unqual(int) x = 1; alignas(16) int y = 2; return alignof(int) + x + y; }",
+    mode=C23,
+  )
+  assert_true(true)
+}
+
+///|
+test "front: C23 attribute before a statement declaration" {
+  let _tu = parse(
+    "int main() { [[maybe_unused]] int y = 0; return y; }",
+    mode=C23,
+  )
+  assert_true(true)
+}

@@ -33,6 +33,7 @@ pub(all) enum TypeSpec {
   TTypeofExpr(Expr)
   TTypeofType(DeclSpec, Declarator)
   TAtomicSpec(DeclSpec, Declarator)
+  TBitInt(Expr)
 }
 
 ///|
@@ -144,6 +145,8 @@ pub(all) enum Expr {
   EChar(String)
   EString(Array[String])
   EIdent(String)
+  EBool(Bool)
+  ENullptr
   EBinary(String, Expr, Expr)
   EUnary(String, Expr)
   EPostfix(String, Expr)

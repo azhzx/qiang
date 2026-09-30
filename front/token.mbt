@@ -1,4 +1,11 @@
 ///|
+/// The C standard version the parser is targeting.
+pub(all) enum StdMode {
+  C11
+  C23
+} derive(Eq)
+
+///|
 /// Token kinds for the full C11 + GNU extension lexer.
 pub(all) enum TokenKind {
   Ident(String)

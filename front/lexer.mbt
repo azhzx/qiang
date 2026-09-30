@@ -117,10 +117,39 @@ pub fn is_keyword(s : String) -> Bool {
 }
 
 ///|
+/// C23-only keywords. In C11 mode these are ordinary identifiers.
+pub fn is_c23_keyword(s : String) -> Bool {
+  match s {
+    "bool"
+    | "true"
+    | "false"
+    | "nullptr"
+    | "constexpr"
+    | "typeof_unqual"
+    | "_BitInt"
+    | "static_assert"
+    | "alignas"
+    | "alignof"
+    | "thread_local" => true
+    _ => false
+  }
+}
+
+///|
+pub fn is_keyword_mode(s : String, mode : StdMode) -> Bool {
+  is_keyword(s) ||
+  (match mode {
+    C23 => is_c23_keyword(s)
+    C11 => false
+  })
+}
+
+///|
 priv struct Scanner {
   mut src : StringView
   mut line : Int
   mut col : Int
+  mode : StdMode
 }
 
 ///|
@@ -354,7 +383,15 @@ fn Scanner::next(self : Scanner) -> Token {
     }
     [c, ..] if is_id_start(c) => {
       let s = self.read_while(is_id_char)
-      mk(if is_keyword(s) { Keyword(s) } else { Ident(s) }, line, col)
+      mk(
+        if is_keyword_mode(s, self.mode) {
+          Keyword(s)
+        } else {
+          Ident(s)
+        },
+        line,
+        col,
+      )
     }
     [c, ..] if is_digit(c) => {
       let text = self.read_while(is_num_char)
@@ -387,8 +424,8 @@ fn Scanner::next(self : Scanner) -> Token {
 }
 
 ///|
-pub fn tokenize(src : String) -> Array[Token] {
-  let sc = Scanner::{ src, line: 1, col: 1, }
+pub fn tokenize(src : String, mode : StdMode) -> Array[Token] {
+  let sc = Scanner::{ src, line: 1, col: 1, mode, }
   let out : Array[Token] = []
   let mut go = true
   while go {
