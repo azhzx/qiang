@@ -1,64 +1,58 @@
-# QPCC - Qopple C Compiler
+# QPCC — the Qopple C compiler
 
-A small C compiler written in MoonBit. It targets the qbe.mbt programmatic QBE
-IL builder (the `ir_builder` package of `azhzx/qbe`) and emits a self-contained
-Mach-O arm64 object in-process, which `clang` links into an executable.
+QPCC is the C11 front end and code generator that targets the qbe.mbt IR
+builder. It is the only C compiler in this repository: the historical
+parser/codegen that lived directly in `qpcc/` has been removed.
 
-QPCC is the "real-world user" exercise for the qbe.mbt builder. It is written
-from scratch (design informed by chibicc and mbtcc; see the licensing note).
+## Pipeline
 
-## Status
+```
+source.c --(clang -E)--> tokens --(front)--> AST
+         --(sema)--> CheckedProgram --(codegen)--> ir_builder --> Mach-O / asm
+```
 
-Supported:
-
-- expressions with full precedence; local variables and initializers;
-  assignment and compound assignment; `if`/`else`, `while`, `for`, `do`/`while`,
-  `break`, `continue`; comparisons, `&&`/`||`/`!`, `? :`; `sizeof`;
-  increment/decrement.
-- multiple functions, parameters, calls, recursion, libc calls (e.g.
-  `putchar`); `int`/`char`/`long`/`void` return types.
-- pointers, address-of/deref, pointer arithmetic, arrays, string literals,
-  character literals, `sizeof` of types and expressions.
-- struct types with `.` and `->` member access and C layout/alignment; global
-  variables with constant initializers.
-- a minimal preprocessor that drops `#` directive lines, so `#include` is
-  accepted (libc functions become implicit declarations). `#define` expansion is
-  not implemented.
-
-Not yet supported: `#define` macro expansion, variadic functions, floating point,
-function pointers, `static`/`extern`, struct assignment/parameters,
-union/enum/typedef.
+| Package | Role |
+| --- | --- |
+| `qpcc/front` | lexer, surface AST, full C11 + GNU-extension parser (`-std=c11|c23`) |
+| `qpcc/sema` | name resolution, types, layout, constant evaluation, diagnostics |
+| `qpcc/codegen` | lowers the checked AST onto `ir_builder` |
+| `qpcc/cmd` | driver CLI |
 
 ## Usage
 
-    moon build --target native qpcc/cmd
-    _build/native/debug/build/qpcc/cmd/cmd.exe input.c -o input.o
-    clang input.o -o input && ./input
+```sh
+moon build --target native qpcc/cmd
+qpcc input.c -o input.o [--emit obj|asm|qbe] [-std=c11|c23] [--check]
+clang input.o -o a.out
+```
 
-    # print the generated QBE IL instead of an object:
-    ... cmd.exe input.c --emit qbe
+The C preprocessor is external: run `clang -E -P` before `qpcc` when the input
+uses `#include`/`#define`. Plain `#` lines are stripped by the driver for
+convenience.
 
-## Tests
+## Supported
 
-    sh qpcc/test.sh
+- C11 syntax plus the GNU extensions the parser accepts, with `-std=c11|c23`.
+- Types: `void`, `_Bool`, `char`/`short`/`int`/`long`/`long long`, `float`,
+  `double`, `long double` (8 bytes on arm64), pointers, arrays including VLA,
+  functions, `struct`/`union`/`enum`, bitfields, `_Atomic` (single-threaded
+  semantics), `_Complex` (type and layout).
+- Expressions, statements, `switch`, `goto`, statement expressions, compound
+  literals, `__builtin_offsetof`, `__builtin_types_compatible_p`, designated
+  initializers.
+- Code generation for Mach-O arm64 through `ir_builder`.
 
-This is the oracle: for every `qpcc/tests/*.c` fixture it compiles once with
-`clang` and once with QPCC, links both, runs both, and compares exit codes and
-stdout. 25/25 fixtures pass.
+## Limitations
 
-## Layout
+- The preprocessor is external (`clang -E`); preprocessor tests are out of scope.
+- Computed goto (`goto *p`) and static label-address arrays are not lowered.
+- `_Complex` arithmetic, full atomic memory ordering and some aggregate
+  initializer edge cases are incomplete.
+- Diagnostics carry statement-level positions.
 
-    qpcc/lexer.mbt     tokens + tokenizer
-    qpcc/ast.mbt       C types and AST
-    qpcc/parser.mbt    recursive-descent parser
-    qpcc/codegen.mbt   lowering onto ir_builder
-    qpcc/qpcc.mbt      driver + preprocessor
-    qpcc/cmd/          executable CLI
-    qpcc/tests/        C fixtures
-    qpcc/test.sh       clang-oracle test runner
+## Testing
 
-## Licensing
-
-QPCC is original code licensed under the Apache License 2.0 (like qbe.mbt). Its
-design is informed by chibicc (MIT, (c) 2019 Rui Ueyama) and mbtcc (Apache-2.0).
-No third-party source or test files were copied; see ../THIRD_PARTY_NOTICES.md.
+- `sh qpcc/test.sh` — clang oracle over `qpcc/tests/*.c` (52 fixtures).
+- `moon test --target native qpcc/front qpcc/sema` — front-end and sema tests.
+- `qpcc/chibicc-tests/` — a vendored chibicc subset used for parsing and
+  end-to-end checks.

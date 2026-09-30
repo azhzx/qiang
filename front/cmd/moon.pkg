@@ -1,9 +1,0 @@
-import {
-  "azhzx/qbe/qpcc/front",
-  "moonbitlang/core/env",
-  "moonbitlang/x/fs",
-}
-
-supported_targets = "-all+native"
-
-pkgtype(kind: "executable")

@@ -92,8 +92,15 @@ pub fn int_literal_type(s : String) -> CType {
     CLongLong(!has_u)
   } else if has_l {
     CLong(!has_u)
+  } else if has_u {
+    CInt(false)
   } else {
-    CInt(!has_u)
+    let v = parse_int_lit(s)
+    if v > 2147483647L || v < -2147483648L {
+      CLong(true)
+    } else {
+      CInt(true)
+    }
   }
 }
 
@@ -439,6 +446,19 @@ fn check_call(
   args : Array[@front.Expr],
   ctx : Ctx,
 ) -> TExpr {
+  match callee {
+    @front.EIdent(n) =>
+      if ctx.scopes.lookup(n) is None {
+        ctx.scopes.define({
+          name: n,
+          kind: SymFunc,
+          ty: CFunc(CInt(true), [], true),
+          storage: StNone,
+          value: 0L,
+        })
+      }
+    _ => ()
+  }
   match callee {
     @front.EIdent(n) =>
       if n.has_prefix("__c11_atomic_") ||
