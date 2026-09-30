@@ -166,22 +166,54 @@ fn define_aggregate(
         }
       @front.SAnon(spec) => {
         let ty = declspec_to_type(spec, ctx)
-        let a = align_of_ty(ty, ctx.layouts)
-        let sz = size_of_ty(ty, ctx.layouts)
-        if a > maxa {
-          maxa = a
+        match ty {
+          CStruct(i) | CUnion(i) => {
+            let lay = ctx.layouts[i]
+            if lay.align > maxa {
+              maxa = lay.align
+            }
+            if lay.size > maxsz {
+              maxsz = lay.size
+            }
+            let base_off = if is_union { 0 } else { align_up(off, lay.align) }
+            for f in lay.fields {
+              fields.push({
+                name: f.name,
+                ty: f.ty,
+                offset: base_off + f.offset,
+                bit_width: f.bit_width,
+                bit_offset: f.bit_offset,
+              })
+            }
+            if !is_union {
+              off = base_off + lay.size
+            }
+          }
+          _ => {
+            let a = align_of_ty(ty, ctx.layouts)
+            let sz = size_of_ty(ty, ctx.layouts)
+            if a > maxa {
+              maxa = a
+            }
+            if sz > maxsz {
+              maxsz = sz
+            }
+            let fo = if is_union {
+              0
+            } else {
+              let o = align_up(off, a)
+              off = o + sz
+              o
+            }
+            fields.push({
+              name: "",
+              ty,
+              offset: fo,
+              bit_width: 0,
+              bit_offset: 0,
+            })
+          }
         }
-        if sz > maxsz {
-          maxsz = sz
-        }
-        let fo = if is_union {
-          0
-        } else {
-          let o = align_up(off, a)
-          off = o + sz
-          o
-        }
-        fields.push({ name: "", ty, offset: fo, bit_width: 0, bit_offset: 0, })
       }
       _ => ()
     }
