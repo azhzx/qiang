@@ -24,29 +24,66 @@ pub fn func_params(d : @front.Declarator) -> Array[@front.ParamDecl] {
 ///|
 pub fn collect_locals(s : TStmt, out : Array[(String, CType)]) -> Unit {
   match s.kind {
-    KSDecl(n, ty, _) => out.push((n, ty))
-    KSAggInit(n, ty, _) => out.push((n, ty))
     KSBlock(items) =>
       for x in items {
         collect_locals(x, out)
       }
-    KSIf(_, t, el) => {
+    KSDecl(n, ty, init) => {
+      out.push((n, ty))
+      match init {
+        Some(e) => collect_expr_locals(e, out)
+        None => ()
+      }
+    }
+    KSAggInit(n, ty, stores) => {
+      out.push((n, ty))
+      for entry in stores {
+        collect_expr_locals(entry.1, out)
+      }
+    }
+    KSExpr(e) =>
+      match e {
+        Some(x) => collect_expr_locals(x, out)
+        None => ()
+      }
+    KSReturn(e) =>
+      match e {
+        Some(x) => collect_expr_locals(x, out)
+        None => ()
+      }
+    KSIf(c, t, el) => {
+      collect_expr_locals(c, out)
       collect_locals(t, out)
       match el {
         Some(x) => collect_locals(x, out)
         None => ()
       }
     }
-    KSWhile(_, b) => collect_locals(b, out)
-    KSDoWhile(b, _) => collect_locals(b, out)
-    KSFor(i, _, _, b) => {
+    KSWhile(c, b) => {
+      collect_expr_locals(c, out)
+      collect_locals(b, out)
+    }
+    KSDoWhile(b, c) => {
+      collect_locals(b, out)
+      collect_expr_locals(c, out)
+    }
+    KSFor(i, c, st, b) => {
       match i {
         Some(x) => collect_locals(x, out)
         None => ()
       }
+      match c {
+        Some(x) => collect_expr_locals(x, out)
+        None => ()
+      }
+      match st {
+        Some(x) => collect_expr_locals(x, out)
+        None => ()
+      }
       collect_locals(b, out)
     }
-    KSSwitch(_, cases, d) => {
+    KSSwitch(e, cases, d) => {
+      collect_expr_locals(e, out)
       for c in cases {
         collect_locals(c.1, out)
       }
@@ -55,19 +92,57 @@ pub fn collect_locals(s : TStmt, out : Array[(String, CType)]) -> Unit {
         None => ()
       }
     }
-    KSExpr(Some(e)) => collect_in_expr(e, out)
-    KSReturn(Some(e)) => collect_in_expr(e, out)
+    KSLabel(_, b) => collect_locals(b, out)
+    KSGotoPtr(e) => collect_expr_locals(e, out)
     _ => ()
   }
 }
 
 ///|
-fn collect_in_expr(e : TExpr, out : Array[(String, CType)]) -> Unit {
+fn collect_expr_locals(e : TExpr, out : Array[(String, CType)]) -> Unit {
   match e.kind {
     TStmtExpr(items) =>
       for s in items {
         collect_locals(s, out)
       }
+    TBin(_, l, r) => {
+      collect_expr_locals(l, out)
+      collect_expr_locals(r, out)
+    }
+    TUn(_, x) => collect_expr_locals(x, out)
+    TAssign(l, r) => {
+      collect_expr_locals(l, out)
+      collect_expr_locals(r, out)
+    }
+    TCall(_, c, args) => {
+      collect_expr_locals(c, out)
+      for a in args {
+        collect_expr_locals(a, out)
+      }
+    }
+    TCond(a, b, c) => {
+      collect_expr_locals(a, out)
+      collect_expr_locals(b, out)
+      collect_expr_locals(c, out)
+    }
+    TCast(x) => collect_expr_locals(x, out)
+    TMember(b, _) => collect_expr_locals(b, out)
+    TIndex(a, b) => {
+      collect_expr_locals(a, out)
+      collect_expr_locals(b, out)
+    }
+    TComma(a, b) => {
+      collect_expr_locals(a, out)
+      collect_expr_locals(b, out)
+    }
+    TAddr(x) => collect_expr_locals(x, out)
+    TDeref(x) => collect_expr_locals(x, out)
+    TSizeofVLA(x) => collect_expr_locals(x, out)
+    TCompoundLit(stores) =>
+      for entry in stores {
+        collect_expr_locals(entry.1, out)
+      }
+    TVaArg(x) => collect_expr_locals(x, out)
     _ => ()
   }
 }
@@ -412,13 +487,11 @@ pub fn check_stmt(s : @front.Stmt, ctx : Ctx) -> TStmt {
     @front.SGotoPtr(e) => { kind: KSGotoPtr(check_expr(e, ctx)), }
     @front.SLabel(n, st) => {
       ctx.labels.set(n, true)
-      match st {
-        Some(x) => {
-          let _ = check_stmt(x, ctx)
-        }
-        None => ()
+      let tb = match st {
+        Some(x) => check_stmt(x, ctx)
+        None => { kind: KSEmpty, }
       }
-      { kind: KSLabel(n), }
+      { kind: KSLabel(n, tb), }
     }
     @front.SEmpty => { kind: KSEmpty, }
     @front.SDecl(spec, decls) => {

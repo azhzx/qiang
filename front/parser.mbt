@@ -1251,6 +1251,10 @@ fn Parser::parse_unary_expr(self : Parser) -> Expr {
       if p == "&" && self.at_punct("&") {
         // handled below; unreachable
         EUnary(p, e)
+      } else if p == "++" {
+        EUnary("pre++", e)
+      } else if p == "--" {
+        EUnary("pre--", e)
       } else {
         EUnary(p, e)
       }
@@ -1437,9 +1441,9 @@ fn Parser::parse_postfix_expr(self : Parser) -> Expr {
       let n = self.expect_ident()
       e = EMember(e, n, true)
     } else if self.eat_punct("++") {
-      e = EPostfix("++", e)
+      e = EPostfix("post++", e)
     } else if self.eat_punct("--") {
-      e = EPostfix("--", e)
+      e = EPostfix("post--", e)
     } else {
       go = false
     }

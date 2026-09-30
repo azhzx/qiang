@@ -32,7 +32,11 @@ pub fn decl_name(@front.Declarator) -> String?
 
 pub fn declspec_to_type(@front.DeclSpec, Ctx) -> CType
 
+pub fn decode_string(String) -> String
+
 pub fn func_params(@front.Declarator) -> Array[@front.ParamDecl]
+
+pub fn int_literal_type(String) -> CType
 
 pub fn is_arith(CType) -> Bool
 
@@ -97,6 +101,7 @@ pub struct CheckedFunc {
 pub struct CheckedGlobal {
   name : String
   ty : CType
+  init : Int64?
 }
 
 pub struct CheckedProgram {
@@ -246,7 +251,7 @@ pub(all) enum TStmtKind {
   KSBlock(Array[TStmt])
   KSBreak
   KSContinue
-  KSLabel(String)
+  KSLabel(String, TStmt)
   KSGoto(String)
   KSGotoPtr(TExpr)
   KSSwitch(TExpr, Array[(Int64, TStmt)], TStmt?)

@@ -66,6 +66,38 @@ pub fn common_type(a : CType, b : CType) -> CType {
 }
 
 ///|
+pub fn int_literal_type(s : String) -> CType {
+  let a = s.to_array()
+  let mut i = a.length()
+  let mut has_l = false
+  let mut has_ll = false
+  let mut has_u = false
+  while i > 0 {
+    let ch = a[i - 1]
+    if ch == 'l' || ch == 'L' {
+      if has_l {
+        has_ll = true
+      } else {
+        has_l = true
+      }
+      i = i - 1
+    } else if ch == 'u' || ch == 'U' {
+      has_u = true
+      i = i - 1
+    } else {
+      break
+    }
+  }
+  if has_ll {
+    CLongLong(!has_u)
+  } else if has_l {
+    CLong(!has_u)
+  } else {
+    CInt(!has_u)
+  }
+}
+
+///|
 fn int_expr(v : Int64) -> TExpr {
   mk_expr(TInt(v), CInt(false), false)
 }
@@ -83,7 +115,8 @@ fn field_of(layout : Layout, name : String) -> Field? {
 ///|
 pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
   match e {
-    @front.EInt(s) => mk_expr(TInt(parse_int_lit(s)), CInt(true), false)
+    @front.EInt(s) =>
+      mk_expr(TInt(parse_int_lit(s)), int_literal_type(s), false)
     @front.EChar(s) => mk_expr(TInt(parse_char_lit(s)), CInt(true), false)
     @front.EBool(b) =>
       mk_expr(TInt(if b { 1L } else { 0L }), CInt(false), false)
@@ -257,7 +290,16 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
     }
     @front.EStmtExpr(items) => {
       let body = check_block_items(items, ctx)
-      mk_expr(TStmtExpr(body), CInt(false), false)
+      let n = body.length()
+      let ty = if n > 0 {
+        match body[n - 1].kind {
+          KSExpr(Some(e)) => e.ty
+          _ => CInt(false)
+        }
+      } else {
+        CInt(false)
+      }
+      mk_expr(TStmtExpr(body), ty, false)
     }
     @front.ECompound(spec, d, init) => {
       let base = declspec_to_type(spec, ctx)

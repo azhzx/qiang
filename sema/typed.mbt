@@ -44,7 +44,7 @@ pub(all) enum TStmtKind {
   KSBlock(Array[TStmt])
   KSBreak
   KSContinue
-  KSLabel(String)
+  KSLabel(String, TStmt)
   KSGoto(String)
   KSGotoPtr(TExpr)
   KSSwitch(TExpr, Array[(Int64, TStmt)], TStmt?)
@@ -62,6 +62,7 @@ pub struct TStmt {
 pub struct CheckedGlobal {
   name : String
   ty : CType
+  init : Int64?
 }
 
 ///|

@@ -99,29 +99,121 @@ pub fn parse_int_lit(s : String) -> Int64 {
 }
 
 ///|
+fn sign_extend_char(v : Int) -> Int64 {
+  let b = v & 0xFF
+  if b >= 128 {
+    (b - 256).to_int64()
+  } else {
+    b.to_int64()
+  }
+}
+
+///|
 pub fn parse_char_lit(s : String) -> Int64 {
-  let chars = s.to_array()
-  if chars.length() == 0 {
+  let a = s.to_array()
+  let n = a.length()
+  if n == 0 {
     return 0L
   }
-  if chars[0] == '\\' {
-    if chars.length() >= 2 {
-      match chars[1] {
-        'n' => 10L
-        't' => 9L
-        'r' => 13L
-        '0' => 0L
-        '\\' => 92L
-        '\'' => 39L
-        '"' => 34L
-        _ => chars[1].to_int().to_int64()
+  if a[0] == '\\' && n >= 2 {
+    let e = a[1]
+    let v = match e {
+      'n' => 10
+      't' => 9
+      'r' => 13
+      '0' => 0
+      '\\' => 92
+      '\'' => 39
+      '"' => 34
+      'a' => 7
+      'b' => 8
+      'f' => 12
+      'v' => 11
+      'x' => {
+        let mut vv = 0
+        let mut k = 2
+        while k < n {
+          let d = digit_val(a[k])
+          if d < 0 {
+            break
+          }
+          vv = vv * 16 + d
+          k = k + 1
+        }
+        vv
+      }
+      _ =>
+        if e >= '0' && e <= '7' {
+          let mut vv = 0
+          let mut k = 1
+          while k < n && a[k] >= '0' && a[k] <= '7' {
+            vv = vv * 8 + (a[k].to_int() - 48)
+            k = k + 1
+          }
+          vv
+        } else {
+          e.to_int()
+        }
+    }
+    sign_extend_char(v)
+  } else {
+    sign_extend_char(a[0].to_int())
+  }
+}
+
+///|
+/// Decode C string escapes into the actual bytes (kept as a String).
+pub fn decode_string(raw : String) -> String {
+  let out = StringBuilder::new()
+  let a = raw.to_array()
+  let n = a.length()
+  let mut i = 0
+  while i < n {
+    let ch = a[i]
+    if ch == '\\' && i + 1 < n {
+      i = i + 1
+      let e = a[i]
+      match e {
+        'n' => out.write_char('\n')
+        't' => out.write_char('\t')
+        'r' => out.write_char('\r')
+        '0' => out.write_char('\u{0}')
+        '\\' => out.write_char('\\')
+        '\'' => out.write_char('\'')
+        '"' => out.write_char('"')
+        'x' => {
+          let mut v = 0
+          while i + 1 < n {
+            let d = digit_val(a[i + 1])
+            if d < 0 {
+              break
+            }
+            v = v * 16 + d
+            i = i + 1
+          }
+          out.write_char(Char::from_int(v))
+        }
+        _ =>
+          if e >= '0' && e <= '7' {
+            let mut v = 0
+            let mut k = 0
+            while i < n && k < 3 && a[i] >= '0' && a[i] <= '7' {
+              v = v * 8 + (a[i].to_int() - 48)
+              i = i + 1
+              k = k + 1
+            }
+            i = i - 1
+            out.write_char(Char::from_int(v))
+          } else {
+            out.write_char(e)
+          }
       }
     } else {
-      0L
+      out.write_char(ch)
     }
-  } else {
-    chars[0].to_int().to_int64()
+    i = i + 1
   }
+  out.to_string()
 }
 
 ///|
@@ -215,6 +307,14 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
                 storage: StTypedef,
                 value: 0L,
               })
+            } else if is_func_ty(ty) {
+              ctx.scopes.define({
+                name: n,
+                kind: SymFunc,
+                ty,
+                storage: storage_of(spec),
+                value: 0L,
+              })
             } else {
               ctx.scopes.define({
                 name: n,
@@ -223,7 +323,19 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
                 storage: storage_of(spec),
                 value: 0L,
               })
-              ctx.globals.push({ name: n, ty, })
+              let init = match idecl.init {
+                Some(@front.IExpr(e)) =>
+                  if is_const_expr(e, ctx) {
+                    Some(const_eval_int(e, ctx))
+                  } else {
+                    None
+                  }
+                _ => None
+              }
+              let is_extern = storage_of(spec) is StExtern
+              if !(is_extern && init is None) {
+                ctx.globals.push({ name: n, ty, init, })
+              }
             }
           None => ()
         }

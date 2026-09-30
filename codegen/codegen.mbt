@@ -1,0 +1,1229 @@
+///|
+priv struct Cg {
+  b : @ir_builder.Builder
+  layouts : Array[@sema.Layout]
+  strings : Array[String]
+  mut locals : Map[String, Int]
+  mut local_ty : Map[String, @sema.CType]
+  mut labels : Map[String, Int]
+  mut fid : Int
+  break_blks : Array[Int]
+  cont_blks : Array[Int]
+  mut ret_ty : @sema.CType
+  mut open : Bool
+}
+
+///|
+fn cls_of(ty : @sema.CType) -> @types.Class {
+  match ty {
+    @sema.CVoid => @types.Kw
+    @sema.CFloat => @types.Ks
+    @sema.CDouble | @sema.CLongDouble => @types.Kd
+    @sema.CLong(_)
+    | @sema.CLongLong(_)
+    | @sema.CPtr(_)
+    | @sema.CFunc(_, _, _)
+    | @sema.CArray(_, _)
+    | @sema.CVLA(_, _)
+    | @sema.CStruct(_)
+    | @sema.CUnion(_)
+    | @sema.CComplex(_) => @types.Kl
+    _ => @types.Kw
+  }
+}
+
+///|
+fn ret_of(ty : @sema.CType) -> @ir_builder.Ret {
+  match ty {
+    @sema.CVoid => @ir_builder.Void
+    @sema.CFloat => @ir_builder.Single
+    @sema.CDouble | @sema.CLongDouble => @ir_builder.Double
+    @sema.CLong(_)
+    | @sema.CLongLong(_)
+    | @sema.CPtr(_)
+    | @sema.CFunc(_, _, _)
+    | @sema.CArray(_, _)
+    | @sema.CVLA(_, _)
+    | @sema.CStruct(_)
+    | @sema.CUnion(_) => @ir_builder.Long
+    _ => @ir_builder.Word
+  }
+}
+
+///|
+fn is_aggregate(ty : @sema.CType) -> Bool {
+  match ty {
+    @sema.CArray(_, _)
+    | @sema.CVLA(_, _)
+    | @sema.CStruct(_)
+    | @sema.CUnion(_)
+    | @sema.CComplex(_) => true
+    _ => false
+  }
+}
+
+///|
+fn size_of(ty : @sema.CType, layouts : Array[@sema.Layout]) -> Int {
+  @sema.size_of_ty(ty, layouts)
+}
+
+///|
+fn align_of(ty : @sema.CType, layouts : Array[@sema.Layout]) -> Int {
+  @sema.align_of_ty(ty, layouts)
+}
+
+///|
+fn is_flt(ty : @sema.CType) -> Bool {
+  @sema.is_float(ty)
+}
+
+///|
+fn is_uns(ty : @sema.CType) -> Bool {
+  @sema.is_integer(ty) && !@sema.is_signed(ty)
+}
+
+///|
+fn wider(l : @sema.CType, r : @sema.CType) -> @types.Class {
+  let a = cls_of(l)
+  let b = cls_of(r)
+  if a == @types.Kd || b == @types.Kd {
+    @types.Kd
+  } else if a == @types.Ks || b == @types.Ks {
+    @types.Ks
+  } else if a == @types.Kl || b == @types.Kl {
+    @types.Kl
+  } else {
+    @types.Kw
+  }
+}
+
+///|
+fn Cg::zero_of(c : Cg, cls : @types.Class) -> Int {
+  if cls == @types.Ks {
+    c.b.sconst(c.fid, 0.0)
+  } else if cls == @types.Kd {
+    c.b.fconst(c.fid, 0.0)
+  } else {
+    c.b.iconst(c.fid, 0L)
+  }
+}
+
+///|
+fn Cg::one_of(c : Cg, cls : @types.Class) -> Int {
+  if cls == @types.Ks {
+    c.b.sconst(c.fid, 1.0)
+  } else if cls == @types.Kd {
+    c.b.fconst(c.fid, 1.0)
+  } else {
+    c.b.iconst(c.fid, 1L)
+  }
+}
+
+///|
+fn Cg::norm_bool(c : Cg, v : Int) -> Int {
+  c.b.cmp(c.fid, @types.Cnew, @types.Kw, v, c.b.iconst(c.fid, 0L))
+}
+
+///|
+fn Cg::coerce(c : Cg, v : Int, from : @types.Class, to : @types.Class) -> Int {
+  if from == to {
+    v
+  } else if from == @types.Kw && to == @types.Kl {
+    c.b.unop(c.fid, @types.Extsw, @types.Kl, @types.Kl, v)
+  } else if from == @types.Kl && to == @types.Kw {
+    c.b.unop(c.fid, @types.Copy, @types.Kw, @types.Kw, v)
+  } else if from == @types.Kw && to == @types.Ks {
+    c.b.unop(c.fid, @types.Swtof, @types.Ks, @types.Ks, v)
+  } else if from == @types.Kl && to == @types.Ks {
+    c.b.unop(c.fid, @types.Sltof, @types.Ks, @types.Ks, v)
+  } else if from == @types.Kw && to == @types.Kd {
+    c.b.unop(c.fid, @types.Swtof, @types.Kd, @types.Kd, v)
+  } else if from == @types.Kl && to == @types.Kd {
+    c.b.unop(c.fid, @types.Sltof, @types.Kd, @types.Kd, v)
+  } else if from == @types.Ks && to == @types.Kd {
+    c.b.unop(c.fid, @types.Exts, @types.Kd, @types.Kd, v)
+  } else if from == @types.Kd && to == @types.Ks {
+    c.b.unop(c.fid, @types.Truncd, @types.Ks, @types.Ks, v)
+  } else if from == @types.Ks && to == @types.Kw {
+    c.b.unop(c.fid, @types.Stosi, @types.Kw, @types.Kw, v)
+  } else if from == @types.Kd && to == @types.Kw {
+    c.b.unop(c.fid, @types.Dtosi, @types.Kw, @types.Kw, v)
+  } else if from == @types.Ks && to == @types.Kl {
+    c.b.unop(c.fid, @types.Stosi, @types.Kl, @types.Kl, v)
+  } else if from == @types.Kd && to == @types.Kl {
+    c.b.unop(c.fid, @types.Dtosi, @types.Kl, @types.Kl, v)
+  } else {
+    v
+  }
+}
+
+///|
+fn Cg::load_scalar(c : Cg, ty : @sema.CType, addr : Int) -> Int {
+  match ty {
+    @sema.CBool => c.b.load(c.fid, @types.Loadub, @types.Kw, addr)
+    @sema.CChar(s) =>
+      c.b.load(
+        c.fid,
+        if s {
+          @types.Loadsb
+        } else {
+          @types.Loadub
+        },
+        @types.Kw,
+        addr,
+      )
+    @sema.CShort(s) =>
+      c.b.load(
+        c.fid,
+        if s {
+          @types.Loadsh
+        } else {
+          @types.Loaduh
+        },
+        @types.Kw,
+        addr,
+      )
+    @sema.CInt(s) =>
+      c.b.load(
+        c.fid,
+        if s {
+          @types.Loadsw
+        } else {
+          @types.Loaduw
+        },
+        @types.Kw,
+        addr,
+      )
+    @sema.CEnum(_) => c.b.load(c.fid, @types.Loadsw, @types.Kw, addr)
+    @sema.CBitInt(n) =>
+      if n <= 32 {
+        c.b.load(c.fid, @types.Loadsw, @types.Kw, addr)
+      } else {
+        c.b.load(c.fid, @types.Load, @types.Kl, addr)
+      }
+    @sema.CLong(_) | @sema.CLongLong(_) | @sema.CPtr(_) =>
+      c.b.load(c.fid, @types.Load, @types.Kl, addr)
+    @sema.CFloat => c.b.load(c.fid, @types.Load, @types.Ks, addr)
+    @sema.CDouble | @sema.CLongDouble =>
+      c.b.load(c.fid, @types.Load, @types.Kd, addr)
+    _ => addr
+  }
+}
+
+///|
+fn Cg::store_scalar(c : Cg, ty : @sema.CType, val : Int, addr : Int) -> Unit {
+  match ty {
+    @sema.CBool | @sema.CChar(_) =>
+      c.b.store(c.fid, @types.Storeb, @types.Kw, val, addr)
+    @sema.CShort(_) => c.b.store(c.fid, @types.Storeh, @types.Kw, val, addr)
+    @sema.CInt(_) | @sema.CEnum(_) =>
+      c.b.store(c.fid, @types.Storew, @types.Kw, val, addr)
+    @sema.CBitInt(n) =>
+      if n <= 32 {
+        c.b.store(c.fid, @types.Storew, @types.Kw, val, addr)
+      } else {
+        c.b.store(c.fid, @types.Storel, @types.Kl, val, addr)
+      }
+    @sema.CLong(_) | @sema.CLongLong(_) | @sema.CPtr(_) =>
+      c.b.store(c.fid, @types.Storel, @types.Kl, val, addr)
+    @sema.CFloat => c.b.store(c.fid, @types.Stores, @types.Ks, val, addr)
+    @sema.CDouble | @sema.CLongDouble =>
+      c.b.store(c.fid, @types.Stored, @types.Kd, val, addr)
+    _ => ()
+  }
+}
+
+///|
+fn Cg::new_block(c : Cg, name : String) -> Int {
+  c.b.add_block(c.fid, name)
+}
+
+///|
+fn Cg::switch(c : Cg, blk : Int) -> Unit {
+  c.b.switch_to(c.fid, blk)
+  c.open = true
+}
+
+///|
+fn is_cmp(op : String) -> Bool {
+  op == "==" || op == "!=" || op == "<" || op == "<=" || op == ">" || op == ">="
+}
+
+///|
+fn Cg::gen_addr(c : Cg, e : @sema.TExpr) -> Int {
+  match e.kind {
+    @sema.TVar(n) =>
+      match c.locals.get(n) {
+        Some(a) => a
+        None => c.b.global(c.fid, n)
+      }
+    @sema.TDeref(p) => c.gen_expr(p)
+    @sema.TMember(b, off) => {
+      let a = c.gen_addr(b)
+      if off == 0 {
+        a
+      } else {
+        c.b.arith(
+          c.fid,
+          @types.Add,
+          @types.Kl,
+          a,
+          c.b.iconst(c.fid, off.to_int64()),
+        )
+      }
+    }
+    @sema.TCompoundLit(stores) => {
+      let raw = size_of(e.ty, c.layouts)
+      let sz = if raw < 8 { 8 } else { raw }
+      let slot = c.b.emit_ins(
+        c.fid,
+        @types.Alloc8,
+        @types.Kl,
+        @types.Kl,
+        c.b.iconst(c.fid, sz.to_int64()),
+        -1,
+      )
+      for entry in stores {
+        let (off, x) = entry
+        let addr = if off == 0 {
+          slot
+        } else {
+          c.b.arith(
+            c.fid,
+            @types.Add,
+            @types.Kl,
+            slot,
+            c.b.iconst(c.fid, off.to_int64()),
+          )
+        }
+        let v = c.gen_expr(x)
+        let vv = c.coerce(v, cls_of(x.ty), cls_of(x.ty))
+        c.store_scalar(x.ty, vv, addr)
+      }
+      slot
+    }
+    _ => abort("qpcc: not an lvalue")
+  }
+}
+
+///|
+fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
+  match e.kind {
+    @sema.TInt(n) => c.b.iconst(c.fid, n)
+    @sema.TFlt(v, is_f) =>
+      if is_f {
+        c.b.sconst(c.fid, Float::from_double(v))
+      } else {
+        c.b.fconst(c.fid, v)
+      }
+    @sema.TStr(i) => c.b.global(c.fid, c.strings[i])
+    @sema.TLabelAddr(_) => c.b.iconst(c.fid, 0L)
+    @sema.TVar(n) =>
+      match c.locals.get(n) {
+        Some(a) => {
+          let ty = match c.local_ty.get(n) {
+            Some(t) => t
+            None => e.ty
+          }
+          if is_aggregate(ty) {
+            a
+          } else {
+            c.load_scalar(ty, a)
+          }
+        }
+        None =>
+          match e.ty {
+            @sema.CFunc(_, _, _) => c.b.global(c.fid, n)
+            _ => {
+              let a = c.b.global(c.fid, n)
+              if is_aggregate(e.ty) {
+                a
+              } else {
+                c.load_scalar(e.ty, a)
+              }
+            }
+          }
+      }
+    @sema.TAddr(x) => c.gen_addr(x)
+    @sema.TDeref(p) => {
+      let a = c.gen_expr(p)
+      if is_aggregate(e.ty) {
+        a
+      } else {
+        c.load_scalar(e.ty, a)
+      }
+    }
+    @sema.TMember(_, _) => {
+      let a = c.gen_addr(e)
+      if is_aggregate(e.ty) {
+        a
+      } else {
+        c.load_scalar(e.ty, a)
+      }
+    }
+    @sema.TAssign(l, r) => {
+      let a = c.gen_addr(l)
+      let v = c.gen_expr(r)
+      let vv = c.convert(v, r.ty, l.ty)
+      c.store_scalar(l.ty, vv, a)
+      vv
+    }
+    @sema.TComma(a, b) => {
+      let _ = c.gen_expr(a)
+      c.gen_expr(b)
+    }
+    @sema.TBin(op, l, r) => c.gen_bin(op, l, r)
+    @sema.TUn(op, x) => c.gen_un(op, x)
+    @sema.TCall(name, callee, args) => {
+      let rty = match callee.ty {
+        @sema.CFunc(r, _, _) => r
+        @sema.CPtr(@sema.CFunc(r, _, _)) => r
+        _ => @sema.CInt(false)
+      }
+      let ptypes : Array[@sema.CType] = match callee.ty {
+        @sema.CFunc(_, ps, _) => ps
+        @sema.CPtr(@sema.CFunc(_, ps, _)) => ps
+        _ => []
+      }
+      let va = match callee.ty {
+        @sema.CFunc(_, _, v) => v
+        @sema.CPtr(@sema.CFunc(_, _, v)) => v
+        _ => false
+      }
+      let nfixed = ptypes.length()
+      let arglist : Array[(@types.Class, Int)] = []
+      let mut ai = 0
+      for a in args {
+        let v = c.gen_expr(a)
+        let ty = if va {
+          if ai < nfixed {
+            ptypes[ai]
+          } else {
+            promote_vararg(a.ty)
+          }
+        } else if ai < ptypes.length() {
+          ptypes[ai]
+        } else {
+          a.ty
+        }
+        arglist.push((cls_of(ty), c.convert(v, a.ty, ty)))
+        ai = ai + 1
+      }
+      let direct = match callee.ty {
+        @sema.CFunc(_, _, _) => true
+        _ => false
+      }
+      if direct && name != "" {
+        if va {
+          let fixed : Array[(@types.Class, Int)] = []
+          let rest : Array[(@types.Class, Int)] = []
+          let mut i = 0
+          for a in arglist {
+            if i < nfixed {
+              fixed.push(a)
+            } else {
+              rest.push(a)
+            }
+            i = i + 1
+          }
+          c.b.call_vararg(c.fid, name, fixed, rest, ret_of(rty))
+        } else {
+          c.b.call(c.fid, name, arglist, ret_of(rty))
+        }
+      } else {
+        let fp = c.gen_expr(callee)
+        c.b.call_value(c.fid, fp, arglist, ret_of(rty))
+      }
+    }
+    @sema.TCond(cond, t, f) => {
+      let then_b = c.new_block("cond.then")
+      let else_b = c.new_block("cond.else")
+      let join = c.new_block("cond.join")
+      let p = c.b.block_param(c.fid, join, cls_of(e.ty))
+      let cv = c.gen_expr(cond)
+      c.b.jnz(c.fid, cv, then_b, [], else_b, [])
+      c.open = false
+      c.switch(then_b)
+      let tv = c.gen_expr(t)
+      c.b.jmp(c.fid, join, [tv])
+      c.open = false
+      c.switch(else_b)
+      let fv = c.gen_expr(f)
+      c.b.jmp(c.fid, join, [fv])
+      c.open = false
+      c.switch(join)
+      p
+    }
+    @sema.TSizeof(n) => c.b.iconst(c.fid, n.to_int64())
+    @sema.TAlignof(n) => c.b.iconst(c.fid, n.to_int64())
+    @sema.TSizeofVLA(x) => c.gen_expr(x)
+    @sema.TStmtExpr(items) => {
+      let n = items.length()
+      if n == 0 {
+        c.b.iconst(c.fid, 0L)
+      } else {
+        let mut i = 0
+        while i < n - 1 {
+          c.gen_stmt(items[i])
+          i = i + 1
+        }
+        let last = items[n - 1]
+        match last.kind {
+          @sema.KSExpr(Some(x)) => c.gen_expr(x)
+          _ => {
+            c.gen_stmt(last)
+            c.b.iconst(c.fid, 0L)
+          }
+        }
+      }
+    }
+    @sema.TCompoundLit(_) => {
+      let a = c.gen_addr(e)
+      if is_aggregate(e.ty) {
+        a
+      } else {
+        c.load_scalar(e.ty, a)
+      }
+    }
+    @sema.TVaArg(_) => c.b.iconst(c.fid, 0L)
+    @sema.TCast(x) => {
+      let v = c.gen_expr(x)
+      c.convert(v, x.ty, e.ty)
+    }
+    @sema.TIndex(a, i) => {
+      let base = c.gen_expr(a)
+      let idx = c.gen_expr(i)
+      let sz = size_of(e.ty, c.layouts)
+      let off = c.b.arith(
+        c.fid,
+        @types.Mul,
+        @types.Kl,
+        idx,
+        c.b.iconst(c.fid, sz.to_int64()),
+      )
+      let addr = c.b.arith(c.fid, @types.Add, @types.Kl, base, off)
+      if is_aggregate(e.ty) {
+        addr
+      } else {
+        c.load_scalar(e.ty, addr)
+      }
+    }
+    @sema.TUnsupported(_) => abort("qpcc: unsupported expression")
+  }
+}
+
+///|
+fn Cg::gen_bin(c : Cg, op : String, l : @sema.TExpr, r : @sema.TExpr) -> Int {
+  let lt = @sema.decay(l.ty)
+  let rt = @sema.decay(r.ty)
+  let cls = wider(lt, rt)
+  let fl = is_flt(lt) || is_flt(rt)
+  let uns = is_uns(lt) || is_uns(rt) || is_ptr_ty(lt) || is_ptr_ty(rt)
+  if op == "&&" || op == "||" {
+    let a = c.gen_expr(l)
+    let av = c.coerce(a, cls_of(lt), cls)
+    let b = c.gen_expr(r)
+    let bv = c.coerce(b, cls_of(rt), cls)
+    let z = c.zero_of(cls)
+    let nz = if cls == @types.Ks || cls == @types.Kd {
+      @types.Cnes
+    } else if cls == @types.Kl {
+      @types.Cnel
+    } else {
+      @types.Cnew
+    }
+    let ca = c.b.cmp(c.fid, nz, cls, av, z)
+    let cb = c.b.cmp(c.fid, nz, cls, bv, z)
+    let o = if op == "&&" { @types.And } else { @types.Or }
+    c.b.arith(c.fid, o, @types.Kw, ca, cb)
+  } else if is_cmp(op) {
+    let a = c.gen_expr(l)
+    let av = c.coerce(a, cls_of(lt), cls)
+    let b = c.gen_expr(r)
+    let bv = c.coerce(b, cls_of(rt), cls)
+    c.b.cmp(c.fid, cmp_op(op, cls, uns, fl), cls, av, bv)
+  } else if (op == "+" || op == "-") && !fl {
+    match (lt, rt) {
+      (@sema.CPtr(el), _) =>
+        if !is_ptr_ty(r.ty) {
+          let base = c.gen_expr(l)
+          let idx = c.coerce(c.gen_expr(r), cls_of(rt), @types.Kl)
+          let sz = size_of(el, c.layouts)
+          let off = c.b.arith(
+            c.fid,
+            @types.Mul,
+            @types.Kl,
+            idx,
+            c.b.iconst(c.fid, sz.to_int64()),
+          )
+          if op == "-" {
+            c.b.arith(c.fid, @types.Sub, @types.Kl, base, off)
+          } else {
+            c.b.arith(c.fid, @types.Add, @types.Kl, base, off)
+          }
+        } else if op == "-" {
+          let a = c.gen_expr(l)
+          let b = c.gen_expr(r)
+          let d = c.b.arith(c.fid, @types.Sub, @types.Kl, a, b)
+          let sz = size_of(el, c.layouts)
+          c.b.arith(
+            c.fid,
+            @types.Div,
+            @types.Kl,
+            d,
+            c.b.iconst(c.fid, sz.to_int64()),
+          )
+        } else {
+          let a = c.coerce(c.gen_expr(l), cls_of(lt), cls)
+          let b = c.coerce(c.gen_expr(r), cls_of(rt), cls)
+          c.b.arith(c.fid, arith_op(op, cls, uns), cls, a, b)
+        }
+      (_, @sema.CPtr(el)) => {
+        let base = c.gen_expr(r)
+        let idx = c.coerce(c.gen_expr(l), cls_of(lt), @types.Kl)
+        let sz = size_of(el, c.layouts)
+        let off = c.b.arith(
+          c.fid,
+          @types.Mul,
+          @types.Kl,
+          idx,
+          c.b.iconst(c.fid, sz.to_int64()),
+        )
+        c.b.arith(c.fid, @types.Add, @types.Kl, base, off)
+      }
+      _ => {
+        let a = c.coerce(c.gen_expr(l), cls_of(lt), cls)
+        let b = c.coerce(c.gen_expr(r), cls_of(rt), cls)
+        c.b.arith(c.fid, arith_op(op, cls, uns), cls, a, b)
+      }
+    }
+  } else {
+    let a = c.coerce(c.gen_expr(l), cls_of(lt), cls)
+    let b = c.coerce(c.gen_expr(r), cls_of(rt), cls)
+    c.b.arith(c.fid, arith_op(op, cls, uns), cls, a, b)
+  }
+}
+
+///|
+fn Cg::truncate(c : Cg, ty : @sema.CType, v : Int) -> Int {
+  match ty {
+    @sema.CBool => c.norm_bool(v)
+    @sema.CChar(sgn) =>
+      if sgn {
+        let t = c.b.arith(
+          c.fid,
+          @types.Shl,
+          @types.Kw,
+          v,
+          c.b.iconst(c.fid, 24L),
+        )
+        c.b.arith(c.fid, @types.Sar, @types.Kw, t, c.b.iconst(c.fid, 24L))
+      } else {
+        c.b.arith(c.fid, @types.And, @types.Kw, v, c.b.iconst(c.fid, 255L))
+      }
+    @sema.CShort(sgn) =>
+      if sgn {
+        let t = c.b.arith(
+          c.fid,
+          @types.Shl,
+          @types.Kw,
+          v,
+          c.b.iconst(c.fid, 16L),
+        )
+        c.b.arith(c.fid, @types.Sar, @types.Kw, t, c.b.iconst(c.fid, 16L))
+      } else {
+        c.b.arith(c.fid, @types.And, @types.Kw, v, c.b.iconst(c.fid, 65535L))
+      }
+    _ => v
+  }
+}
+
+///|
+fn Cg::convert(c : Cg, v : Int, from : @sema.CType, to : @sema.CType) -> Int {
+  c.truncate(to, c.coerce(v, cls_of(from), cls_of(to)))
+}
+
+///|
+fn promote_vararg(ty : @sema.CType) -> @sema.CType {
+  match ty {
+    @sema.CFloat => @sema.CDouble
+    @sema.CBool | @sema.CChar(_) | @sema.CShort(_) | @sema.CEnum(_) =>
+      @sema.CInt(true)
+    _ => ty
+  }
+}
+
+///|
+fn is_ptr_ty(ty : @sema.CType) -> Bool {
+  match @sema.decay(ty) {
+    @sema.CPtr(_) => true
+    _ => false
+  }
+}
+
+///|
+fn arith_op(op : String, cls : @types.Class, uns : Bool) -> @types.Op {
+  let fl = cls == @types.Ks || cls == @types.Kd
+  match op {
+    "+" => @types.Add
+    "-" => @types.Sub
+    "*" => @types.Mul
+    "/" => if fl { @types.Div } else if uns { @types.Udiv } else { @types.Div }
+    "%" => if uns { @types.Urem } else { @types.Rem }
+    "&" => @types.And
+    "|" => @types.Or
+    "^" => @types.Xor
+    "<<" => @types.Shl
+    ">>" => if uns { @types.Shr } else { @types.Sar }
+    _ => abort("qpcc: unknown binary operator " + op)
+  }
+}
+
+///|
+fn cmp_op(op : String, cls : @types.Class, uns : Bool, fl : Bool) -> @types.Op {
+  if fl {
+    match op {
+      "==" => if cls == @types.Kd { @types.Ceqd } else { @types.Ceqs }
+      "!=" => if cls == @types.Kd { @types.Cned } else { @types.Cnes }
+      "<" => if cls == @types.Kd { @types.Cltd } else { @types.Clts }
+      "<=" => if cls == @types.Kd { @types.Cled } else { @types.Cles }
+      ">" => if cls == @types.Kd { @types.Cgtd } else { @types.Cgts }
+      ">=" => if cls == @types.Kd { @types.Cged } else { @types.Cges }
+      _ => abort("qpcc: unknown comparison " + op)
+    }
+  } else {
+    let l = cls == @types.Kl
+    match op {
+      "==" => if l { @types.Ceql } else { @types.Ceqw }
+      "!=" => if l { @types.Cnel } else { @types.Cnew }
+      "<" =>
+        if l {
+          if uns {
+            @types.Cultl
+          } else {
+            @types.Csltl
+          }
+        } else if uns {
+          @types.Cultw
+        } else {
+          @types.Csltw
+        }
+      "<=" =>
+        if l {
+          if uns {
+            @types.Culel
+          } else {
+            @types.Cslel
+          }
+        } else if uns {
+          @types.Culew
+        } else {
+          @types.Cslew
+        }
+      ">" =>
+        if l {
+          if uns {
+            @types.Cugtl
+          } else {
+            @types.Csgtl
+          }
+        } else if uns {
+          @types.Cugtw
+        } else {
+          @types.Csgtw
+        }
+      ">=" =>
+        if l {
+          if uns {
+            @types.Cugel
+          } else {
+            @types.Csgel
+          }
+        } else if uns {
+          @types.Cugew
+        } else {
+          @types.Csgew
+        }
+      _ => abort("qpcc: unknown comparison " + op)
+    }
+  }
+}
+
+///|
+fn Cg::gen_un(c : Cg, op : String, x : @sema.TExpr) -> Int {
+  match op {
+    "-" => {
+      let cls = cls_of(x.ty)
+      let v = c.gen_expr(x)
+      let z = c.zero_of(cls)
+      c.b.arith(c.fid, @types.Sub, cls, z, v)
+    }
+    "~" => {
+      let cls = cls_of(x.ty)
+      let v = c.gen_expr(x)
+      c.b.arith(c.fid, @types.Xor, cls, v, c.b.iconst(c.fid, -1L))
+    }
+    "!" => {
+      let cls = cls_of(x.ty)
+      let v = c.gen_expr(x)
+      let z = c.zero_of(cls)
+      c.b.cmp(c.fid, cmp_op("==", cls, is_uns(x.ty), is_flt(x.ty)), cls, v, z)
+    }
+    _ => {
+      let inc = op == "++" || op == "pre++" || op == "post++"
+      let pre = op == "pre++" || op == "pre--"
+      let a = c.gen_addr(x)
+      let ty = x.ty
+      let old = c.load_scalar(ty, a)
+      let cls = cls_of(ty)
+      let one = match @sema.decay(ty) {
+        @sema.CPtr(el) => c.b.iconst(c.fid, size_of(el, c.layouts).to_int64())
+        _ => c.one_of(cls)
+      }
+      let nv = c.b.arith(
+        c.fid,
+        if inc {
+          @types.Add
+        } else {
+          @types.Sub
+        },
+        cls,
+        old,
+        one,
+      )
+      c.store_scalar(ty, nv, a)
+      if pre {
+        nv
+      } else {
+        old
+      }
+    }
+  }
+}
+
+///|
+fn collect_labels(s : @sema.TStmt, out : Array[String]) -> Unit {
+  match s.kind {
+    @sema.KSBlock(ss) =>
+      for x in ss {
+        collect_labels(x, out)
+      }
+    @sema.KSLabel(n, b) => {
+      out.push(n)
+      collect_labels(b, out)
+    }
+    @sema.KSIf(_, a, b) => {
+      collect_labels(a, out)
+      match b {
+        Some(x) => collect_labels(x, out)
+        None => ()
+      }
+    }
+    @sema.KSWhile(_, b) => collect_labels(b, out)
+    @sema.KSDoWhile(b, _) => collect_labels(b, out)
+    @sema.KSFor(i, _, _, b) => {
+      match i {
+        Some(x) => collect_labels(x, out)
+        None => ()
+      }
+      collect_labels(b, out)
+    }
+    @sema.KSSwitch(_, cases, d) => {
+      for c in cases {
+        collect_labels(c.1, out)
+      }
+      match d {
+        Some(x) => collect_labels(x, out)
+        None => ()
+      }
+    }
+    _ => ()
+  }
+}
+
+///|
+fn Cg::gen_switch(
+  c : Cg,
+  e : @sema.TExpr,
+  cases : Array[(Int64, @sema.TStmt)],
+  dflt : @sema.TStmt?,
+) -> Unit {
+  let end = c.new_block("switch.end")
+  let v = c.gen_expr(e)
+  let cls = cls_of(e.ty)
+  let n = cases.length()
+  let blocks : Array[Int] = []
+  for _i in 0..<n {
+    blocks.push(c.new_block("switch.case"))
+  }
+  let dblk = match dflt {
+    Some(_) => c.new_block("switch.default")
+    None => end
+  }
+  let tests : Array[Int] = []
+  for _i in 0..<n {
+    tests.push(c.new_block("switch.test"))
+  }
+  if n == 0 {
+    c.b.jmp(c.fid, dblk, [])
+  } else {
+    c.b.jmp(c.fid, tests[0], [])
+  }
+  c.open = false
+  for i in 0..<n {
+    c.switch(tests[i])
+    let cv = c.b.iconst(c.fid, cases[i].0)
+    let cc = c.b.cmp(
+      c.fid,
+      if cls == @types.Kl {
+        @types.Ceql
+      } else {
+        @types.Ceqw
+      },
+      cls,
+      v,
+      cv,
+    )
+    let next = if i + 1 < n { tests[i + 1] } else { dblk }
+    c.b.jnz(c.fid, cc, blocks[i], [], next, [])
+    c.open = false
+  }
+  c.break_blks.push(end)
+  for i in 0..<n {
+    c.switch(blocks[i])
+    c.gen_stmt(cases[i].1)
+    if c.open {
+      let next = if i + 1 < n { blocks[i + 1] } else { end }
+      c.b.jmp(c.fid, next, [])
+      c.open = false
+    }
+  }
+  match dflt {
+    Some(b) => {
+      c.switch(dblk)
+      c.gen_stmt(b)
+      if c.open {
+        c.b.jmp(c.fid, end, [])
+        c.open = false
+      }
+    }
+    None => ()
+  }
+  let _ = c.break_blks.pop()
+  c.switch(end)
+}
+
+///|
+fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
+  match s.kind {
+    @sema.KSBlock(ss) =>
+      for x in ss {
+        if !c.open {
+          let dead = c.new_block("dead")
+          c.switch(dead)
+        }
+        c.gen_stmt(x)
+      }
+    @sema.KSDecl(name, ty, init) =>
+      match init {
+        Some(e) => {
+          let a = match c.locals.get(name) {
+            Some(x) => x
+            None => abort("qpcc: unbound local " + name)
+          }
+          let v = c.gen_expr(e)
+          let vv = c.convert(v, e.ty, ty)
+          c.store_scalar(ty, vv, a)
+        }
+        None => ()
+      }
+    @sema.KSAggInit(name, ty, items) => {
+      let base = match c.locals.get(name) {
+        Some(x) => x
+        None => abort("qpcc: unbound local " + name)
+      }
+      for entry in items {
+        let (off, e) = entry
+        let addr = if off == 0 {
+          base
+        } else {
+          c.b.arith(
+            c.fid,
+            @types.Add,
+            @types.Kl,
+            base,
+            c.b.iconst(c.fid, off.to_int64()),
+          )
+        }
+        let v = c.gen_expr(e)
+        let vv = c.coerce(v, cls_of(e.ty), cls_of(e.ty))
+        c.store_scalar(e.ty, vv, addr)
+      }
+      let _ = ty
+    }
+    @sema.KSExpr(Some(e)) => {
+      let _ = c.gen_expr(e)
+    }
+    @sema.KSExpr(None) => ()
+    @sema.KSReturn(e) => {
+      let v = match e {
+        Some(x) => {
+          let val = c.gen_expr(x)
+          c.convert(val, x.ty, c.ret_ty)
+        }
+        None => -1
+      }
+      c.b.ret(c.fid, v)
+      c.open = false
+    }
+    @sema.KSIf(cond, then_s, els) => {
+      let t = c.new_block("if.then")
+      let e = c.new_block("if.else")
+      let end = c.new_block("if.end")
+      let cv = c.gen_expr(cond)
+      c.b.jnz(c.fid, cv, t, [], e, [])
+      c.open = false
+      c.switch(t)
+      c.gen_stmt(then_s)
+      if c.open {
+        c.b.jmp(c.fid, end, [])
+        c.open = false
+      }
+      c.switch(e)
+      match els {
+        Some(x) => c.gen_stmt(x)
+        None => ()
+      }
+      if c.open {
+        c.b.jmp(c.fid, end, [])
+        c.open = false
+      }
+      c.switch(end)
+    }
+    @sema.KSWhile(cond, body) => {
+      let cb = c.new_block("while.cond")
+      let bb = c.new_block("while.body")
+      let end = c.new_block("while.end")
+      c.b.jmp(c.fid, cb, [])
+      c.open = false
+      c.switch(cb)
+      let cv = c.gen_expr(cond)
+      c.b.jnz(c.fid, cv, bb, [], end, [])
+      c.open = false
+      c.break_blks.push(end)
+      c.cont_blks.push(cb)
+      c.switch(bb)
+      c.gen_stmt(body)
+      if c.open {
+        c.b.jmp(c.fid, cb, [])
+        c.open = false
+      }
+      let _ = c.break_blks.pop()
+      let _ = c.cont_blks.pop()
+      c.switch(end)
+    }
+    @sema.KSDoWhile(body, cond) => {
+      let bb = c.new_block("do.body")
+      let cb = c.new_block("do.cond")
+      let end = c.new_block("do.end")
+      c.b.jmp(c.fid, bb, [])
+      c.open = false
+      c.break_blks.push(end)
+      c.cont_blks.push(cb)
+      c.switch(bb)
+      c.gen_stmt(body)
+      if c.open {
+        c.b.jmp(c.fid, cb, [])
+        c.open = false
+      }
+      let _ = c.break_blks.pop()
+      let _ = c.cont_blks.pop()
+      c.switch(cb)
+      let cv = c.gen_expr(cond)
+      c.b.jnz(c.fid, cv, bb, [], end, [])
+      c.open = false
+      c.switch(end)
+    }
+    @sema.KSFor(init, cond, step, body) => {
+      match init {
+        Some(s0) => c.gen_stmt(s0)
+        None => ()
+      }
+      let cb = c.new_block("for.cond")
+      let bb = c.new_block("for.body")
+      let sb = c.new_block("for.step")
+      let end = c.new_block("for.end")
+      c.b.jmp(c.fid, cb, [])
+      c.open = false
+      c.switch(cb)
+      match cond {
+        Some(ce) => {
+          let cv = c.gen_expr(ce)
+          c.b.jnz(c.fid, cv, bb, [], end, [])
+        }
+        None => c.b.jmp(c.fid, bb, [])
+      }
+      c.open = false
+      c.break_blks.push(end)
+      c.cont_blks.push(sb)
+      c.switch(bb)
+      c.gen_stmt(body)
+      if c.open {
+        c.b.jmp(c.fid, sb, [])
+        c.open = false
+      }
+      let _ = c.break_blks.pop()
+      let _ = c.cont_blks.pop()
+      c.switch(sb)
+      match step {
+        Some(se) => {
+          let _ = c.gen_expr(se)
+        }
+        None => ()
+      }
+      c.b.jmp(c.fid, cb, [])
+      c.open = false
+      c.switch(end)
+    }
+    @sema.KSBreak => {
+      let b = c.break_blks[c.break_blks.length() - 1]
+      c.b.jmp(c.fid, b, [])
+      c.open = false
+    }
+    @sema.KSContinue => {
+      let b = c.cont_blks[c.cont_blks.length() - 1]
+      c.b.jmp(c.fid, b, [])
+      c.open = false
+    }
+    @sema.KSGoto(n) => {
+      let blk = match c.labels.get(n) {
+        Some(b) => b
+        None => abort("qpcc: unknown label " + n)
+      }
+      c.b.jmp(c.fid, blk, [])
+      c.open = false
+    }
+    @sema.KSGotoPtr(_) => abort("qpcc: computed goto is not supported")
+    @sema.KSLabel(n, b) => {
+      let blk = match c.labels.get(n) {
+        Some(x) => x
+        None => abort("qpcc: unknown label " + n)
+      }
+      if c.b.current_block(c.fid) != blk {
+        if c.open {
+          c.b.jmp(c.fid, blk, [])
+          c.open = false
+        }
+        c.switch(blk)
+      }
+      c.gen_stmt(b)
+    }
+    @sema.KSSwitch(e, cases, dflt) => c.gen_switch(e, cases, dflt)
+    @sema.KSEmpty => ()
+  }
+}
+
+///|
+fn le_bytes(v : Int64) -> Bytes {
+  let out : Array[Byte] = []
+  for i in 0..<8 {
+    out.push(((v >> (i * 8)) & 0xFFL).to_int().to_byte())
+  }
+  Bytes::from_array(out[:])
+}
+
+///|
+fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
+  let (ret, ptypes, _va) = match f.ty {
+    @sema.CFunc(r, ps, v) => (r, ps, v)
+    _ => (@sema.CVoid, [], false)
+  }
+  let pclasses : Array[@types.Class] = []
+  for p in ptypes {
+    pclasses.push(cls_of(p))
+  }
+  let fid = c.b.add_func(f.name, ret_of(ret), pclasses, true)
+  c.fid = fid
+  c.ret_ty = ret
+  c.open = true
+  c.locals = Map::new()
+  c.local_ty = Map::new()
+  c.labels = Map::new()
+  c.break_blks.clear()
+  c.cont_blks.clear()
+  for i in 0..<f.params.length() {
+    let (n, ty) = f.params[i]
+    if n != "" {
+      let raw = size_of(ty, c.layouts)
+      let sz = if raw < 8 { 8 } else { raw }
+      let sv = c.b.iconst(fid, sz.to_int64())
+      let slot = c.b.emit_ins(fid, @types.Alloc8, @types.Kl, @types.Kl, sv, -1)
+      let pv = c.b.param(fid, i)
+      c.store_scalar(ty, pv, slot)
+      c.locals.set(n, slot)
+      c.local_ty.set(n, ty)
+    }
+  }
+  for entry in f.locals {
+    let (n, t) = entry
+    let raw = size_of(t, c.layouts)
+    let sz = if raw < 8 { 8 } else { raw }
+    let sv = c.b.iconst(fid, sz.to_int64())
+    let slot = c.b.emit_ins(fid, @types.Alloc8, @types.Kl, @types.Kl, sv, -1)
+    c.locals.set(n, slot)
+    c.local_ty.set(n, t)
+  }
+  let label_names : Array[String] = []
+  collect_labels(f.body, label_names)
+  for n in label_names {
+    if !c.labels.contains(n) {
+      let blk = c.b.add_block(fid, "label_" + n)
+      c.labels.set(n, blk)
+    }
+  }
+  c.gen_stmt(f.body)
+  if c.open {
+    let v = match ret_of(c.ret_ty) {
+      @ir_builder.Void => -1
+      _ => c.zero_of(cls_of(c.ret_ty))
+    }
+    c.b.ret(fid, v)
+    c.open = false
+  }
+}
+
+///|
+/// Lower a checked program to the QBE builder.
+pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
+  let b = @ir_builder.Builder::new()
+  let strs : Array[String] = []
+  for i in 0..<p.strings.length() {
+    let label = "qpcc_str_" + i.to_string()
+    b.data_string(label, false, p.strings[i] + "\\0")
+    strs.push(label)
+  }
+  for g in p.globals {
+    let v = match g.init {
+      Some(x) => x
+      None => 0L
+    }
+    b.data_bytes(g.name, false, le_bytes(v))
+  }
+  let c = Cg::{
+    b,
+    layouts: p.layouts,
+    strings: strs,
+    locals: Map::new(),
+    local_ty: Map::new(),
+    labels: Map::new(),
+    fid: 0,
+    break_blks: [],
+    cont_blks: [],
+    ret_ty: @sema.CVoid,
+    open: false,
+  }
+  for f in p.funcs {
+    c.gen_func(f)
+  }
+  b
+}
