@@ -15,6 +15,7 @@ priv struct Cg {
   mut sret_ptr : Int
   mut scratch : Int
   mut bump : Int
+  mut block_seq : Int
 }
 
 ///|
@@ -239,7 +240,8 @@ fn Cg::store_scalar(c : Cg, ty : @sema.CType, val : Int, addr : Int) -> Unit {
 
 ///|
 fn Cg::new_block(c : Cg, name : String) -> Int {
-  c.b.add_block(c.fid, name)
+  c.block_seq = c.block_seq + 1
+  c.b.add_block(c.fid, name + "." + c.block_seq.to_string())
 }
 
 ///|
@@ -1408,6 +1410,7 @@ pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
     sret_ptr: -1,
     scratch: -1,
     bump: 0,
+    block_seq: 0,
   }
   for f in p.funcs {
     c.gen_func(f)
