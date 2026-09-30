@@ -1,6 +1,7 @@
 import {
   "azhzx/qbe/qpcc/front",
   "azhzx/qbe/qpcc/sema",
+  "azhzx/qbe/util",
   "azhzx/qbe/qpcc/codegen",
   "moonbitlang/core/env",
   "moonbitlang/x/fs",

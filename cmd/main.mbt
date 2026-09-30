@@ -108,7 +108,16 @@ fn main {
     println(b.emit_il())
     return
   }
-  let obj = b.emit_object() catch { _ => abort("qpcc: object emission failed") }
+  let obj = b.emit_object() catch {
+    e =>
+      abort(
+        "qpcc: object emission failed: " +
+        (match e {
+          @util.QbeError::CompileError(m) => m
+          _ => e.to_string()
+        }),
+      )
+  }
   let out = if output == "" { input + ".o" } else { output }
   @fs.write_bytes_to_file(out, obj) catch {
     _ => abort("qpcc: cannot write " + out)

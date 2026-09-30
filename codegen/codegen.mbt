@@ -13,6 +13,8 @@ priv struct Cg {
   mut open : Bool
   mut ret_sret : Bool
   mut sret_ptr : Int
+  mut scratch : Int
+  mut bump : Int
 }
 
 ///|
@@ -321,15 +323,7 @@ fn Cg::gen_addr(c : Cg, e : @sema.TExpr) -> Int {
     }
     @sema.TCompoundLit(stores) => {
       let raw = size_of(e.ty, c.layouts)
-      let sz = if raw < 8 { 8 } else { raw }
-      let slot = c.b.emit_ins(
-        c.fid,
-        @types.Alloc8,
-        @types.Kl,
-        @types.Kl,
-        c.b.iconst(c.fid, sz.to_int64()),
-        -1,
-      )
+      let slot = c.alloc_slot(raw)
       for entry in stores {
         let (off, x) = entry
         let addr = if off == 0 {
@@ -1299,9 +1293,13 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
   c.labels = Map::new()
   c.break_blks.clear()
   c.cont_blks.clear()
+  let pvals : Array[Int] = []
+  for j in 0..<pclasses.length() {
+    pvals.push(c.b.param(fid, j))
+  }
   let mut pi = 0
   c.sret_ptr = if ret_sret {
-    let sp = c.b.param(fid, 0)
+    let sp = pvals[0]
     pi = 1
     sp
   } else {
@@ -1313,7 +1311,7 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
     let slot = c.alloc_slot(raw)
     if is_composite(ty) {
       if raw > 16 {
-        let pv = c.b.param(fid, pi)
+        let pv = pvals[pi]
         pi = pi + 1
         if raw > 0 {
           c.emit_memcpy(slot, pv, raw)
@@ -1321,7 +1319,7 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
       } else {
         let nw = param_words(raw)
         for k in 0..<nw {
-          let pv = c.b.param(fid, pi)
+          let pv = pvals[pi]
           pi = pi + 1
           let addr = if k == 0 {
             slot
@@ -1338,7 +1336,7 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
         }
       }
     } else {
-      let pv = c.b.param(fid, pi)
+      let pv = pvals[pi]
       pi = pi + 1
       c.store_scalar(ty, pv, slot)
     }
@@ -1350,9 +1348,7 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
   for entry in f.locals {
     let (n, t) = entry
     let raw = size_of(t, c.layouts)
-    let sz = if raw < 8 { 8 } else { raw }
-    let sv = c.b.iconst(fid, sz.to_int64())
-    let slot = c.b.emit_ins(fid, @types.Alloc8, @types.Kl, @types.Kl, sv, -1)
+    let slot = c.alloc_slot(raw)
     c.locals.set(n, slot)
     c.local_ty.set(n, t)
   }
@@ -1410,6 +1406,8 @@ pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
     open: false,
     ret_sret: false,
     sret_ptr: -1,
+    scratch: -1,
+    bump: 0,
   }
   for f in p.funcs {
     c.gen_func(f)
