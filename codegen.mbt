@@ -8,6 +8,7 @@ priv struct Cg {
   globals : Map[String, Ty]
   funcs : Map[String, (Ty, Array[Ty])]
   str_labels : Array[String]
+  labels : Map[String, Int]
   mut fid : Int
   break_blks : Array[Int]
   cont_blks : Array[Int]
@@ -619,6 +620,123 @@ fn collect_locals(s : Stmt, out : Array[(String, Ty)]) -> Unit {
 }
 
 ///|
+fn collect_labels(s : Stmt, out : Array[String]) -> Unit {
+  match s.kind {
+    SBlock(ss) =>
+      for x in ss {
+        collect_labels(x, out)
+      }
+    SLabel(n, b) => {
+      out.push(n)
+      collect_labels(b, out)
+    }
+    SIf(_, a, b) => {
+      collect_labels(a, out)
+      match b {
+        Some(x) => collect_labels(x, out)
+        None => ()
+      }
+    }
+    SWhile(_, b) => collect_labels(b, out)
+    SFor(i, _, _, b) => {
+      match i {
+        Some(x) => collect_labels(x, out)
+        None => ()
+      }
+      collect_labels(b, out)
+    }
+    SDoWhile(b, _) => collect_labels(b, out)
+    SSwitch(_, b) => collect_labels(b, out)
+    _ => ()
+  }
+}
+
+///|
+fn Cg::gen_switch(c : Cg, e : Expr, body : Stmt) -> Unit {
+  let stmts = match body.kind {
+    SBlock(ss) => ss
+    _ => [body]
+  }
+  let end = c.new_block("switch.end")
+  let cases : Array[(Int64, Int)] = []
+  let mut default_blk = -1
+  for s in stmts {
+    match s.kind {
+      SCase(v) => {
+        let blk = c.new_block("switch.case")
+        cases.push((v, blk))
+      }
+      SDefault => default_blk = c.new_block("switch.default")
+      _ => ()
+    }
+  }
+  if default_blk == -1 {
+    default_blk = end
+  }
+  let v = c.gen_expr(e)
+  let cls = cls_of(e.ty)
+  let n = cases.length()
+  let tests : Array[Int] = []
+  for _i in 0..<n {
+    tests.push(c.new_block("switch.test"))
+  }
+  if n == 0 {
+    c.b.jmp(c.fid, default_blk, [])
+  } else {
+    c.b.jmp(c.fid, tests[0], [])
+  }
+  c.open = false
+  for i in 0..<n {
+    c.switch(tests[i])
+    let (val, blk) = cases[i]
+    let cv = c.b.iconst(c.fid, val)
+    let cc = c.b.cmp(
+      c.fid,
+      if cls == @types.Kl {
+        @types.Ceql
+      } else {
+        @types.Ceqw
+      },
+      cls,
+      v,
+      cv,
+    )
+    let next = if i + 1 < n { tests[i + 1] } else { default_blk }
+    c.b.jnz(c.fid, cc, blk, [], next, [])
+    c.open = false
+  }
+  c.break_blks.push(end)
+  let mut ci = 0
+  for s in stmts {
+    match s.kind {
+      SCase(_) => {
+        let (_, blk) = cases[ci]
+        ci = ci + 1
+        if c.open {
+          c.b.jmp(c.fid, blk, [])
+          c.open = false
+        }
+        c.switch(blk)
+      }
+      SDefault => {
+        if c.open {
+          c.b.jmp(c.fid, default_blk, [])
+          c.open = false
+        }
+        c.switch(default_blk)
+      }
+      _ => c.gen_stmt(s)
+    }
+  }
+  if c.open {
+    c.b.jmp(c.fid, end, [])
+    c.open = false
+  }
+  let _ = c.break_blks.pop()
+  c.switch(end)
+}
+
+///|
 fn Cg::gen_stmt(c : Cg, s : Stmt) -> Unit {
   match s.kind {
     SBlock(ss) =>
@@ -785,7 +903,31 @@ fn Cg::gen_stmt(c : Cg, s : Stmt) -> Unit {
       c.b.jmp(c.fid, b, [])
       c.open = false
     }
-    _ => abort("qpcc: switch/goto/label codegen not implemented yet")
+    SGoto(n) => {
+      let blk = match c.labels.get(n) {
+        Some(b) => b
+        None => abort("qpcc: unknown label " + n)
+      }
+      c.b.jmp(c.fid, blk, [])
+      c.open = false
+    }
+    SLabel(n, b) => {
+      let blk = match c.labels.get(n) {
+        Some(x) => x
+        None => abort("qpcc: unknown label " + n)
+      }
+      if c.b.current_block(c.fid) != blk {
+        if c.open {
+          c.b.jmp(c.fid, blk, [])
+          c.open = false
+        }
+        c.switch(blk)
+      }
+      c.gen_stmt(b)
+    }
+    SSwitch(e, body) => c.gen_switch(e, body)
+    SCase(_) => abort("qpcc: case outside switch")
+    SDefault => abort("qpcc: default outside switch")
   }
 }
 
@@ -831,6 +973,14 @@ fn Cg::gen_func(c : Cg, f : FuncDef) -> Unit {
     c.locals.set(n, slot)
     c.local_ty.set(n, t)
   }
+  let label_names : Array[String] = []
+  collect_labels(f.body, label_names)
+  for n in label_names {
+    if !c.labels.contains(n) {
+      let blk = c.b.add_block(fid, "label_" + n)
+      c.labels.set(n, blk)
+    }
+  }
   c.gen_stmt(f.body)
   if c.open {
     let v = if ret_of(c.ret_ty) == @ir_builder.Void {
@@ -867,6 +1017,7 @@ pub fn compile_program(p : Program) -> @ir_builder.Builder raise {
     globals: Map::new(),
     funcs: Map::new(),
     str_labels: strs,
+    labels: Map::new(),
     fid: 0,
     break_blks: [],
     cont_blks: [],

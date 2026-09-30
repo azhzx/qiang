@@ -111,6 +111,14 @@ fn P::at_type(self : P) -> Bool {
 }
 
 ///|
+fn P::at_label(self : P) -> Bool {
+  match (self.peek(), self.peek2()) {
+    (TIdent(_), TPunct(":")) => true
+    _ => false
+  }
+}
+
+///|
 fn P::parse_type(self : P) -> Ty {
   let mut uns = false
   let mut n_long = 0
@@ -730,6 +738,37 @@ fn P::parse_stmt(self : P) -> Stmt {
   } else if self.eat_kw("continue") {
     self.expect(";")
     { kind: SContinue, }
+  } else if self.eat_kw("switch") {
+    self.expect("(")
+    let e = self.parse_expr()
+    self.expect(")")
+    let b = self.parse_stmt()
+    { kind: SSwitch(e, b), }
+  } else if self.eat_kw("case") {
+    let v = match self.adv() {
+      TNum(n) => n
+      _ => abort("qpcc: case value must be an integer constant")
+    }
+    self.expect(":")
+    { kind: SCase(v), }
+  } else if self.eat_kw("default") {
+    self.expect(":")
+    { kind: SDefault, }
+  } else if self.eat_kw("goto") {
+    let n = match self.eat_ident() {
+      Some(x) => x
+      None => abort("qpcc: expected label name")
+    }
+    self.expect(";")
+    { kind: SGoto(n), }
+  } else if self.at_label() {
+    let n = match self.eat_ident() {
+      Some(x) => x
+      None => abort("qpcc: expected label name")
+    }
+    self.expect(":")
+    let s = self.parse_stmt()
+    { kind: SLabel(n, s), }
   } else if self.eat(";") {
     { kind: SBlock([]), }
   } else {
