@@ -342,6 +342,15 @@ fn Cg::bitfield_read(
 }
 
 ///|
+fn elem_of(ty : @sema.CType) -> @sema.CType {
+  match ty {
+    @sema.CPtr(t) => t
+    @sema.CArray(t, _) => t
+    _ => ty
+  }
+}
+
+///|
 fn Cg::gen_addr(c : Cg, e : @sema.TExpr) -> Int {
   match e.kind {
     @sema.TVar(n) =>
@@ -522,6 +531,42 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
     @sema.TBin(op, l, r) => c.gen_bin(op, l, r)
     @sema.TUn(op, x) => c.gen_un(op, x)
     @sema.TCall(name, callee, args) => {
+      if name == "__c11_atomic_load" ||
+        name == "atomic_load" ||
+        name == "__atomic_load_n" ||
+        name == "__atomic_load" {
+        if args.length() > 0 {
+          let ptr = args[0]
+          return c.b.atomic_load(
+            c.fid,
+            cls_of(elem_of(ptr.ty)),
+            c.gen_expr(ptr),
+          )
+        }
+        return c.b.iconst(c.fid, 0L)
+      }
+      if name == "__c11_atomic_store" ||
+        name == "atomic_store" ||
+        name == "__atomic_store_n" ||
+        name == "__atomic_store" {
+        if args.length() >= 2 {
+          let ptr = args[0]
+          let val = args[1]
+          let elem = elem_of(ptr.ty)
+          let v = c.gen_expr(val)
+          let vv = c.convert(v, val.ty, elem)
+          let addr = c.gen_expr(ptr)
+          c.b.atomic_store(c.fid, cls_of(elem), vv, addr)
+        }
+        return c.b.iconst(c.fid, 0L)
+      }
+      if name == "atomic_thread_fence" ||
+        name == "atomic_signal_fence" ||
+        name == "__c11_atomic_thread_fence" ||
+        name == "__atomic_thread_fence" {
+        c.b.fence(c.fid)
+        return c.b.iconst(c.fid, 0L)
+      }
       if name == "__builtin_va_start" {
         if args.length() > 0 {
           let ap = c.gen_addr(args[0])
