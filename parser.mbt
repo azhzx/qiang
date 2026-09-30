@@ -11,6 +11,7 @@ priv struct P {
   struct_tys : Map[String, Int]
   consts : Map[String, Int64]
   typedefs : Map[String, Ty]
+  varargs : Array[(String, Int)]
   funcs_list : Array[FuncDef]
   globals_list : Array[GlobalDef]
 }
@@ -270,7 +271,7 @@ fn P::parse_declarator(self : P, base : Ty) -> (String, Ty) {
     self.expect(")")
     let mut t = base
     if self.eat("(") {
-      let params = self.parse_param_list()
+      let (params, _is_va) = self.parse_param_list()
       let ptypes : Array[Ty] = []
       for p in params {
         ptypes.push(p.ty)
@@ -1032,17 +1033,23 @@ fn P::parse_stmt(self : P) -> Stmt {
 }
 
 ///|
-fn P::parse_params(self : P) -> Array[Param] {
+fn P::parse_params(self : P) -> (Array[Param], Bool) {
   self.expect("(")
   self.parse_param_list()
 }
 
 ///|
-fn P::parse_param_list(self : P) -> Array[Param] {
+fn P::parse_param_list(self : P) -> (Array[Param], Bool) {
   let ps : Array[Param] = []
+  let mut is_va = false
   if !self.eat(")") {
     let mut more = true
     while more {
+      if self.eat("...") {
+        is_va = true
+        more = false
+        continue
+      }
       let base = self.parse_type()
       let (name, ty) = if self.peek() == TPunct("(") &&
         self.peek2() == TPunct("*") {
@@ -1066,7 +1073,7 @@ fn P::parse_param_list(self : P) -> Array[Param] {
     }
     self.expect(")")
   }
-  ps
+  (ps, is_va)
 }
 
 ///|
@@ -1093,12 +1100,15 @@ fn P::parse_top(self : P) -> Unit {
   if self.eat("(") {
     // function: params follow, we already consumed "("
     self.pos = self.pos - 1
-    let params = self.parse_params()
+    let (params, is_va) = self.parse_params()
     let ptypes : Array[Ty] = []
     for p in params {
       ptypes.push(p.ty)
     }
     self.funcs.set(name, (ty, ptypes))
+    if is_va {
+      self.varargs.push((name, params.length()))
+    }
     if self.eat(";") {
       return
     }
@@ -1145,6 +1155,7 @@ pub fn parse(src : String) -> Program {
     struct_tys: Map::new(),
     consts: Map::new(),
     typedefs: Map::new(),
+    varargs: [],
     funcs_list: [],
     globals_list: [],
   }
@@ -1156,5 +1167,6 @@ pub fn parse(src : String) -> Program {
     globals: p.globals_list,
     strings: p.strings,
     structs: p.structs,
+    varargs: p.varargs,
   }
 }

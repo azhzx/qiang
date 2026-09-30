@@ -110,6 +110,7 @@ pub struct Program {
   globals : Array[GlobalDef]
   strings : Array[String]
   structs : Array[StructDef]
+  varargs : Array[(String, Int)]
 }
 
 ///|

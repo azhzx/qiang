@@ -9,6 +9,7 @@ priv struct Cg {
   funcs : Map[String, (Ty, Array[Ty])]
   str_labels : Array[String]
   labels : Map[String, Int]
+  varargs : Map[String, Int]
   mut fid : Int
   break_blks : Array[Int]
   cont_blks : Array[Int]
@@ -327,7 +328,22 @@ fn Cg::gen_expr(c : Cg, e : Expr) -> Int {
               let fp = c.gen_expr(callee)
               c.b.call_value(c.fid, fp, arglist, ret_of(rty))
             }
-            _ => c.b.call(c.fid, name, arglist, ret_of(rty))
+            _ =>
+              match c.varargs.get(name) {
+                Some(nfixed) => {
+                  let fixed : Array[(@types.Class, Int)] = []
+                  let va : Array[(@types.Class, Int)] = []
+                  for i in 0..<arglist.length() {
+                    if i < nfixed {
+                      fixed.push(arglist[i])
+                    } else {
+                      va.push(arglist[i])
+                    }
+                  }
+                  c.b.call_vararg(c.fid, name, fixed, va, ret_of(rty))
+                }
+                None => c.b.call(c.fid, name, arglist, ret_of(rty))
+              }
           }
         _ => {
           let fp = c.gen_expr(callee)
@@ -1073,6 +1089,10 @@ pub fn compile_program(p : Program) -> @ir_builder.Builder raise {
     }
     fmap.set(f.name, (f.ret, ptypes))
   }
+  let vmap : Map[String, Int] = Map::new()
+  for (n, k) in p.varargs {
+    vmap.set(n, k)
+  }
   let c = Cg::{
     b,
     structs: p.structs,
@@ -1082,6 +1102,7 @@ pub fn compile_program(p : Program) -> @ir_builder.Builder raise {
     funcs: fmap,
     str_labels: strs,
     labels: Map::new(),
+    varargs: vmap,
     fid: 0,
     break_blks: [],
     cont_blks: [],
