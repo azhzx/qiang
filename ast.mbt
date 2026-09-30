@@ -17,6 +17,7 @@ pub(all) enum Ty {
   TFloat
   TDouble
   TPtr(Ty)
+  TFunc(Ty, Array[Ty])
   TArr(Ty, Int)
   TStruct(Int)
 } derive(Eq, Debug)
@@ -39,7 +40,7 @@ pub(all) enum EK {
   EBin(String, Expr, Expr)
   EUn(String, Expr)
   EAssign(Expr, Expr)
-  ECall(String, Array[Expr])
+  ECall(Expr, Array[Expr])
   ECond(Expr, Expr, Expr)
   EMember(Expr, Int)
   ECast(Expr)
@@ -122,6 +123,7 @@ pub fn size_of(ty : Ty, structs : Array[StructDef]) -> Int {
     TFloat => 4
     TDouble => 8
     TPtr(_) => 8
+    TFunc(_, _) => 1
     TArr(e, n) => size_of(e, structs) * n
     TStruct(i) => structs[i].size
   }
@@ -138,6 +140,7 @@ pub fn align_of(ty : Ty, structs : Array[StructDef]) -> Int {
     TFloat => 4
     TDouble => 8
     TPtr(_) => 8
+    TFunc(_, _) => 1
     TArr(e, _) => align_of(e, structs)
     TStruct(i) => structs[i].align
   }
@@ -193,6 +196,7 @@ pub fn is_signed(ty : Ty) -> Bool {
 pub fn decay(ty : Ty) -> Ty {
   match ty {
     TArr(e, _) => TPtr(e)
+    TFunc(r, ps) => TPtr(TFunc(r, ps))
     _ => ty
   }
 }

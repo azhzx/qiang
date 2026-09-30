@@ -46,7 +46,7 @@ pub(all) enum EK {
   EBin(String, Expr, Expr)
   EUn(String, Expr)
   EAssign(Expr, Expr)
-  ECall(String, Array[Expr])
+  ECall(Expr, Array[Expr])
   ECond(Expr, Expr, Expr)
   EMember(Expr, Int)
   ECast(Expr)
@@ -146,6 +146,7 @@ pub(all) enum Ty {
   TFloat
   TDouble
   TPtr(Ty)
+  TFunc(Ty, Array[Ty])
   TArr(Ty, Int)
   TStruct(Int)
 } derive(Eq, @debug.Debug)

@@ -257,6 +257,39 @@ fn P::parse_type(self : P) -> Ty {
 ///|
 /// Parse a declarator: an optional name and array suffix.
 fn P::parse_declarator(self : P, base : Ty) -> (String, Ty) {
+  if self.peek() == TPunct("(") && self.peek2() == TPunct("*") {
+    self.expect("(")
+    let mut stars = 0
+    while self.eat("*") {
+      stars = stars + 1
+    }
+    let name = match self.eat_ident() {
+      Some(n) => n
+      None => abort("qpcc: expected identifier")
+    }
+    self.expect(")")
+    let mut t = base
+    if self.eat("(") {
+      let params = self.parse_param_list()
+      let ptypes : Array[Ty] = []
+      for p in params {
+        ptypes.push(p.ty)
+      }
+      t = TFunc(base, ptypes)
+    }
+    while self.eat("[") {
+      let n = match self.adv() {
+        TNum(k) => k.to_int()
+        _ => abort("qpcc: expected array size")
+      }
+      self.expect("]")
+      t = TArr(t, n)
+    }
+    for _i in 0..<stars {
+      t = TPtr(t)
+    }
+    return (name, t)
+  }
   // pointer suffixes may follow the base type before the name
   let mut b = base
   while self.eat("*") {
@@ -483,7 +516,7 @@ fn P::lookup(self : P, name : String) -> Ty {
         Some(t) => t
         None =>
           match self.funcs.get(name) {
-            Some((r, _)) => TPtr(r)
+            Some((r, ps)) => TFunc(r, ps)
             None => TInt // implicit declaration: assume int
           }
       }
@@ -756,15 +789,13 @@ fn P::parse_postfix(self : P) -> Expr {
         }
         self.expect(")")
       }
-      let name = match e.kind {
-        EVar(n) => n
-        _ => abort("qpcc: indirect calls are not supported")
+      let callee = e
+      let ty = match decay(callee.ty) {
+        TFunc(r, _) => r
+        TPtr(TFunc(r, _)) => r
+        _ => TInt
       }
-      let ty = match self.funcs.get(name) {
-        Some((r, _)) => r
-        None => TInt
-      }
-      e = mk(ECall(name, args), ty)
+      e = mk(ECall(callee, args), ty)
     } else if self.eat("[") {
       let idx = self.parse_expr()
       self.expect("]")
@@ -1002,19 +1033,30 @@ fn P::parse_stmt(self : P) -> Stmt {
 
 ///|
 fn P::parse_params(self : P) -> Array[Param] {
-  let ps : Array[Param] = []
   self.expect("(")
+  self.parse_param_list()
+}
+
+///|
+fn P::parse_param_list(self : P) -> Array[Param] {
+  let ps : Array[Param] = []
   if !self.eat(")") {
     let mut more = true
     while more {
       let base = self.parse_type()
-      let mut ty = base
-      while self.eat("*") {
-        ty = TPtr(ty)
-      }
-      let name = match self.eat_ident() {
-        Some(n) => n
-        None => ""
+      let (name, ty) = if self.peek() == TPunct("(") &&
+        self.peek2() == TPunct("*") {
+        self.parse_declarator(base)
+      } else {
+        let mut t = base
+        while self.eat("*") {
+          t = TPtr(t)
+        }
+        let n = match self.eat_ident() {
+          Some(k) => k
+          None => ""
+        }
+        (n, t)
       }
       ps.push({ name, ty, })
       if self.eat(",") {

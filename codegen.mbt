@@ -27,6 +27,7 @@ fn cls_of(ty : Ty) -> @types.Class {
     | TLongLong
     | TULongLong
     | TPtr(_)
+    | TFunc(_, _)
     | TArr(_, _)
     | TStruct(_) => @types.Kl
     TFloat => @types.Ks
@@ -45,6 +46,7 @@ fn ret_of(ty : Ty) -> @ir_builder.Ret {
     | TLongLong
     | TULongLong
     | TPtr(_)
+    | TFunc(_, _)
     | TArr(_, _)
     | TStruct(_) => @ir_builder.Long
     _ => @ir_builder.Word
@@ -244,14 +246,18 @@ fn Cg::gen_expr(c : Cg, e : Expr) -> Int {
             c.load_scalar(ty, a)
           }
         }
-        None => {
-          let a = c.b.global(c.fid, n)
-          if is_aggregate(e.ty) {
-            a
-          } else {
-            c.load_scalar(e.ty, a)
+        None =>
+          match e.ty {
+            TFunc(_, _) => c.b.global(c.fid, n)
+            _ => {
+              let a = c.b.global(c.fid, n)
+              if is_aggregate(e.ty) {
+                a
+              } else {
+                c.load_scalar(e.ty, a)
+              }
+            }
           }
-        }
       }
     EAddr(x) => c.gen_addr(x)
     EDeref(p) => {
@@ -304,16 +310,30 @@ fn Cg::gen_expr(c : Cg, e : Expr) -> Int {
     }
     EBin(op, l, r) => c.gen_bin(op, l, r)
     EUn(op, x) => c.gen_un(op, x)
-    ECall(name, args) => {
+    ECall(callee, args) => {
       let arglist : Array[(@types.Class, Int)] = []
       for a in args {
         arglist.push((cls_of(a.ty), c.gen_expr(a)))
       }
-      let rty = match c.funcs.get(name) {
-        Some((rt, _)) => rt
-        None => TInt
+      let rty = match decay(callee.ty) {
+        TFunc(r, _) => r
+        TPtr(TFunc(r, _)) => r
+        _ => TInt
       }
-      c.b.call(c.fid, name, arglist, ret_of(rty))
+      match callee.kind {
+        EVar(name) =>
+          match callee.ty {
+            TPtr(TFunc(_, _)) => {
+              let fp = c.gen_expr(callee)
+              c.b.call_value(c.fid, fp, arglist, ret_of(rty))
+            }
+            _ => c.b.call(c.fid, name, arglist, ret_of(rty))
+          }
+        _ => {
+          let fp = c.gen_expr(callee)
+          c.b.call_value(c.fid, fp, arglist, ret_of(rty))
+        }
+      }
     }
     ECond(cond, t, f) => {
       let then_b = c.new_block("cond.then")
@@ -1045,13 +1065,21 @@ pub fn compile_program(p : Program) -> @ir_builder.Builder raise {
     }
     b.data_bytes(g.name, false, le_bytes(v))
   }
+  let fmap : Map[String, (Ty, Array[Ty])] = Map::new()
+  for f in p.funcs {
+    let ptypes : Array[Ty] = []
+    for pp in f.params {
+      ptypes.push(pp.ty)
+    }
+    fmap.set(f.name, (f.ret, ptypes))
+  }
   let c = Cg::{
     b,
     structs: p.structs,
     locals: Map::new(),
     local_ty: Map::new(),
     globals: Map::new(),
-    funcs: Map::new(),
+    funcs: fmap,
     str_labels: strs,
     labels: Map::new(),
     fid: 0,
