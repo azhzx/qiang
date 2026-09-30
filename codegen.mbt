@@ -335,6 +335,7 @@ fn Cg::gen_expr(c : Cg, e : Expr) -> Int {
       p
     }
     ESizeofT(t) => c.b.iconst(c.fid, size_of(t, c.structs).to_int64())
+    EAlignofT(t) => c.b.iconst(c.fid, align_of(t, c.structs).to_int64())
     ESizeofE(x) => c.b.iconst(c.fid, size_of(decay(x.ty), c.structs).to_int64())
     ECast(x) => {
       let v = c.gen_expr(x)

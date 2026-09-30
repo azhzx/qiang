@@ -47,6 +47,7 @@ pub(all) enum EK {
   EDeref(Expr)
   ESizeofE(Expr)
   ESizeofT(Ty)
+  EAlignofT(Ty)
   EComma(Expr, Expr)
 }
 

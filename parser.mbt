@@ -608,6 +608,13 @@ fn P::parse_unary(self : P) -> Expr {
       let e = self.parse_unary()
       mk(EUn("pre--", e), e.ty)
     }
+    TKw("_Alignof") => {
+      self.pos = self.pos + 1
+      self.expect("(")
+      let t = self.parse_type()
+      self.expect(")")
+      mk(EAlignofT(t), TLong)
+    }
     TKw("sizeof") => {
       self.pos = self.pos + 1
       if self.eat("(") {
