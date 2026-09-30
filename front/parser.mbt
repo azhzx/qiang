@@ -151,7 +151,12 @@ fn Parser::at_typedef(self : Parser) -> Bool {
 
 ///|
 fn Parser::is_type_start(self : Parser) -> Bool {
-  match self.peek().kind {
+  self.is_type_start_at(0)
+}
+
+///|
+fn Parser::is_type_start_at(self : Parser, off : Int) -> Bool {
+  match self.peek_n(off).kind {
     Keyword(k) =>
       is_basic_type_kw(k) ||
       is_qualifier_kw(k) ||
@@ -181,7 +186,7 @@ fn Parser::is_type_start(self : Parser) -> Bool {
       k == "static" ||
       k == "auto" ||
       k == "register"
-    Ident(_) => self.at_typedef()
+    Ident(n) => self.typedefs.contains(n)
     _ => false
   }
 }
@@ -633,7 +638,12 @@ fn Parser::parse_declarator(self : Parser) -> Declarator {
 
 ///|
 fn Parser::parse_direct_declarator(self : Parser) -> Declarator {
-  let mut d = if self.eat_punct("(") {
+  let mut d = if self.at_punct("(") &&
+    (self.peek_n(1).kind is Punct(")") || self.is_type_start_at(1)) {
+    self.pos = self.pos + 1
+    let (params, va) = self.parse_param_list()
+    DFunction(DAbstract, params, va)
+  } else if self.eat_punct("(") {
     let inner = self.parse_declarator()
     self.expect_punct(")")
     inner
@@ -1212,7 +1222,9 @@ fn Parser::parse_cast_expr(self : Parser) -> Expr {
         self.expect_punct(")")
         // compound literal: (type){...}
         if self.at_punct("{") {
-          return ECompound(spec, d, self.parse_initializer())
+          return self.parse_postfix_tail(
+            ECompound(spec, d, self.parse_initializer()),
+          )
         }
         let e = self.parse_cast_expr()
         return ECast(spec, d, e)
@@ -1223,7 +1235,9 @@ fn Parser::parse_cast_expr(self : Parser) -> Expr {
         let d = self.parse_declarator()
         self.expect_punct(")")
         if self.at_punct("{") {
-          return ECompound(spec, d, self.parse_initializer())
+          return self.parse_postfix_tail(
+            ECompound(spec, d, self.parse_initializer()),
+          )
         }
         let e = self.parse_cast_expr()
         return ECast(spec, d, e)
@@ -1413,7 +1427,12 @@ fn Parser::parse_unary_expr(self : Parser) -> Expr {
 
 ///|
 fn Parser::parse_postfix_expr(self : Parser) -> Expr {
-  let mut e = self.parse_primary_expr()
+  self.parse_postfix_tail(self.parse_primary_expr())
+}
+
+///|
+fn Parser::parse_postfix_tail(self : Parser, start : Expr) -> Expr {
+  let mut e = start
   let mut go = true
   while go {
     if self.eat_punct("[") {
@@ -1529,7 +1548,14 @@ fn empty_declspec() -> DeclSpec {
 ///|
 pub fn parse(src : String, mode? : StdMode = C11) -> TranslationUnit {
   let toks = tokenize(src, mode)
-  let p = Parser::{ toks, pos: 0, typedefs: Map::new(), mode, }
+  let typedefs : Map[String, Bool] = Map::new()
+  for
+    n in [
+      "__uint128_t", "__int128_t", "__builtin_va_list", "__builtin_ms_va_list",
+    ] {
+    typedefs.set(n, true)
+  }
+  let p = Parser::{ toks, pos: 0, typedefs, mode, }
   let decls : Array[ExternalDecl] = []
   while !(p.peek().kind is Eof) {
     decls.push(p.parse_external_decl())

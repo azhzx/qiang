@@ -453,6 +453,15 @@ pub fn check(tu : @front.TranslationUnit) -> CheckedProgram {
     labels: Map::new(),
     gotos: [],
   }
+  for n in ["__uint128_t", "__int128_t"] {
+    ctx.scopes.define({
+      name: n,
+      kind: SymTypedef,
+      ty: CBitInt(128),
+      storage: StTypedef,
+      value: 0L,
+    })
+  }
   let va_list_ty = CPtr(CChar(true))
   ctx.scopes.define({
     name: "alloca",
