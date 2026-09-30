@@ -9,6 +9,7 @@ priv struct P {
   strings : Array[String]
   structs : Array[StructDef]
   struct_tys : Map[String, Int]
+  consts : Map[String, Int64]
   funcs_list : Array[FuncDef]
   globals_list : Array[GlobalDef]
 }
@@ -97,6 +98,7 @@ fn ty_kw(t : Tok) -> Bool {
     | TKw("bool")
     | TKw("struct")
     | TKw("union")
+    | TKw("enum")
     | TKw("const")
     | TKw("volatile")
     | TKw("restrict")
@@ -162,6 +164,7 @@ fn P::parse_type(self : P) -> Ty {
         base = TBool
       }
       TKw("struct") | TKw("union") => base = self.parse_struct_type()
+      TKw("enum") => base = self.parse_enum_type()
       TKw("const") | TKw("volatile") | TKw("restrict") | TKw("_Atomic") =>
         self.pos = self.pos + 1
       _ => go = false
@@ -334,6 +337,33 @@ fn P::lookup_member(self : P, ty : Ty, name : String) -> (Int, Ty) {
     }
   }
   abort("qpcc: no such member " + name)
+}
+
+///|
+fn P::parse_enum_type(self : P) -> Ty {
+  self.expect_kw("enum")
+  let _tag = self.eat_ident()
+  if self.eat("{") {
+    let mut val : Int64 = 0L
+    while !self.eat("}") {
+      let name = match self.eat_ident() {
+        Some(x) => x
+        None => abort("qpcc: expected enumerator name")
+      }
+      if self.eat("=") {
+        val = match self.adv() {
+          TNum(n) => n
+          _ => abort("qpcc: enum value must be an integer constant")
+        }
+      }
+      self.consts.set(name, val)
+      val = val + 1L
+      if self.eat(",") {
+        continue
+      }
+    }
+  }
+  TInt
 }
 
 ///|
@@ -637,7 +667,11 @@ fn P::parse_primary(self : P) -> Expr {
       self.strings.push(s)
       mk(EStr(id), TPtr(TChar))
     }
-    TIdent(n) => mk(EVar(n), self.lookup(n))
+    TIdent(n) =>
+      match self.consts.get(n) {
+        Some(v) => mk(ENum(v), TInt)
+        None => mk(EVar(n), self.lookup(n))
+      }
     TPunct("(") => {
       let e = self.parse_expr()
       self.expect(")")
@@ -865,6 +899,7 @@ pub fn parse(src : String) -> Program {
     strings: [],
     structs: [],
     struct_tys: Map::new(),
+    consts: Map::new(),
     funcs_list: [],
     globals_list: [],
   }
