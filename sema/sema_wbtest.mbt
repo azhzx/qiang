@@ -31,8 +31,27 @@ test "sema: declarator types" {
 }
 
 ///|
-test "sema: unsupported complex type reports an error" {
-  let tu = @front.parse("_Complex double z;")
+test "sema: complex and long double types" {
+  let tu = @front.parse("_Complex double z; long double w; _Complex float q;")
   let r = check(tu)
-  assert_true(r.diags.length() > 0)
+  assert_eq(r.diags.length(), 0)
+}
+
+///|
+test "sema: VLA and _Atomic" {
+  let tu = @front.parse(
+    "int f(int n) { int a[n]; _Atomic int x = 0; return a[0] + x; }",
+  )
+  let r = check(tu)
+  assert_eq(r.diags.length(), 0)
+}
+
+///|
+test "sema: switch keeps case structure" {
+  let tu = @front.parse(
+    "int f(int x) { switch (x) { case 1: return 1; case 2: return 2; default: return 0; } }",
+  )
+  let r = check(tu)
+  assert_eq(r.diags.length(), 0)
+  assert_eq(r.funcs.length(), 1)
 }

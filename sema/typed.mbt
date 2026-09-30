@@ -5,6 +5,7 @@ pub(all) enum TExprKind {
   TFlt(Double, Bool)
   TStr(Int)
   TVar(String)
+  TLabelAddr(String)
   TBin(String, TExpr, TExpr)
   TUn(String, TExpr)
   TAssign(TExpr, TExpr)
@@ -18,7 +19,11 @@ pub(all) enum TExprKind {
   TDeref(TExpr)
   TSizeof(Int)
   TAlignof(Int)
+  TSizeofVLA(TExpr)
   TStmtExpr(Array[TStmt])
+  TCompoundLit(Array[(Int, TExpr)])
+  TVaArg(TExpr)
+  TUnsupported(String)
 }
 
 ///|
@@ -41,6 +46,8 @@ pub(all) enum TStmtKind {
   KSContinue
   KSLabel(String)
   KSGoto(String)
+  KSGotoPtr(TExpr)
+  KSSwitch(TExpr, Array[(Int64, TStmt)], TStmt?)
   KSDecl(String, CType, TExpr?)
   KSAggInit(String, CType, Array[(Int, TExpr)])
   KSEmpty
@@ -52,8 +59,17 @@ pub struct TStmt {
 }
 
 ///|
+pub struct CheckedGlobal {
+  name : String
+  ty : CType
+}
+
+///|
 pub struct CheckedFunc {
   name : String
   ty : CType
+  params : Array[(String, CType)]
+  locals : Array[(String, CType)]
+  is_vararg : Bool
   body : TStmt
 }

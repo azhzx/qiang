@@ -4,13 +4,20 @@ pub fn build_type(d : @front.Declarator, base : CType, ctx : Ctx) -> CType {
   match d {
     @front.DName(_) | @front.DAbstract => base
     @front.DPointer(_, inner) => build_type(inner, CPtr(base), ctx)
-    @front.DArray(inner, size, _) => {
-      let n = match size {
-        Some(e) => const_eval_int(e, ctx).to_int()
-        None => 0
+    @front.DArray(inner, size, _) =>
+      match size {
+        Some(e) =>
+          if is_const_expr(e, ctx) {
+            build_type(
+              inner,
+              CArray(base, const_eval_int(e, ctx).to_int()),
+              ctx,
+            )
+          } else {
+            build_type(inner, CVLA(base, check_expr(e, ctx)), ctx)
+          }
+        None => build_type(inner, CArray(base, 0), ctx)
       }
-      build_type(inner, CArray(base, n), ctx)
-    }
     @front.DFunction(inner, params, va) => {
       let ps : Array[CType] = []
       for p in params {
@@ -19,6 +26,29 @@ pub fn build_type(d : @front.Declarator, base : CType, ctx : Ctx) -> CType {
       }
       build_type(inner, CFunc(base, ps, va), ctx)
     }
+  }
+}
+
+///|
+pub fn is_const_expr(e : @front.Expr, ctx : Ctx) -> Bool {
+  match e {
+    @front.EInt(_) | @front.EChar(_) | @front.EBool(_) | @front.ENullptr => true
+    @front.EIdent(n) =>
+      match ctx.scopes.lookup(n) {
+        Some(s) =>
+          match s.kind {
+            SymEnumConst => true
+            _ => false
+          }
+        None => false
+      }
+    @front.EBinary(_, l, r) => is_const_expr(l, ctx) && is_const_expr(r, ctx)
+    @front.EUnary(_, x) => is_const_expr(x, ctx)
+    @front.ECond(c, t, f) =>
+      is_const_expr(c, ctx) && is_const_expr(t, ctx) && is_const_expr(f, ctx)
+    @front.ECast(_, _, x) => is_const_expr(x, ctx)
+    @front.ESizeofType(_, _) | @front.EAlignofType(_, _) => true
+    _ => false
   }
 }
 
@@ -36,6 +66,7 @@ pub fn decl_name(d : @front.Declarator) -> String? {
 ///|
 pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
   let mut uns = false
+  let mut complex = false
   let mut n_long = 0
   let mut n_short = 0
   let mut base : CType? = None
@@ -53,8 +84,7 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
           "float" => base = Some(CFloat)
           "double" => base = Some(CDouble)
           "_Bool" | "bool" => base = Some(CBool)
-          "_Complex" | "_Imaginary" =>
-            ctx.diags.error("complex types are not supported")
+          "_Complex" | "_Imaginary" => complex = true
           "__int128" => base = Some(CBitInt(128))
           "__builtin_va_list" | "__builtin_ms_va_list" =>
             base = Some(CPtr(CVoid))
@@ -88,7 +118,7 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
     Some(t) => t
     None => CInt(false)
   }
-  match b {
+  let r = match b {
     CChar(_) => CChar(!uns)
     CShort(_) => CShort(!uns)
     CInt(_) =>
@@ -101,7 +131,13 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
       } else {
         CInt(!uns)
       }
+    CDouble => if n_long > 0 { CLongDouble } else { CDouble }
     other => other
+  }
+  if complex {
+    CComplex(r)
+  } else {
+    r
   }
 }
 
@@ -247,18 +283,33 @@ fn define_aggregate(
     }
   }
   let size = if is_union { align_up(maxsz, maxa) } else { align_up(off, maxa) }
+  let name = match tag {
+    Some(t) => t
+    None => ""
+  }
+  if fields.length() > 0 {
+    match tag {
+      Some(t) =>
+        match ctx.scopes.lookup_tag(t) {
+          Some(i) =>
+            if ctx.layouts[i].fields.length() == 0 {
+              ctx.layouts[i] = {
+                name,
+                is_union,
+                fields,
+                size,
+                align: maxa,
+                enum_vals: [],
+              }
+              return i
+            }
+          None => ()
+        }
+      None => ()
+    }
+  }
   let idx = ctx.layouts.length()
-  ctx.layouts.push({
-    name: match tag {
-      Some(t) => t
-      None => ""
-    },
-    is_union,
-    fields,
-    size,
-    align: maxa,
-    enum_vals: [],
-  })
+  ctx.layouts.push({ name, is_union, fields, size, align: maxa, enum_vals: [], })
   match tag {
     Some(t) => ctx.scopes.define_tag(t, idx)
     None => ()

@@ -20,6 +20,10 @@ pub fn check_expr(@front.Expr, Ctx) -> TExpr
 
 pub fn check_stmt(@front.Stmt, Ctx) -> TStmt
 
+pub fn collect_locals(TStmt, Array[(String, CType)]) -> Unit
+
+pub fn common_type(CType, CType) -> CType
+
 pub fn const_eval_int(@front.Expr, Ctx) -> Int64
 
 pub fn decay(CType) -> CType
@@ -31,6 +35,10 @@ pub fn declspec_to_type(@front.DeclSpec, Ctx) -> CType
 pub fn func_params(@front.Declarator) -> Array[@front.ParamDecl]
 
 pub fn is_arith(CType) -> Bool
+
+pub fn is_complex(CType) -> Bool
+
+pub fn is_const_expr(@front.Expr, Ctx) -> Bool
 
 pub fn is_float(CType) -> Bool
 
@@ -50,6 +58,8 @@ pub fn parse_int_lit(String) -> Int64
 
 pub fn size_of_ty(CType, Array[Layout]) -> Int
 
+pub fn ty_eq(CType, CType) -> Bool
+
 // Errors
 
 // Types and methods
@@ -61,26 +71,38 @@ pub(all) enum CType {
   CInt(Bool)
   CLong(Bool)
   CLongLong(Bool)
+  CLongDouble
   CFloat
   CDouble
+  CComplex(CType)
   CPtr(CType)
   CArray(CType, Int)
+  CVLA(CType, TExpr)
   CFunc(CType, Array[CType], Bool)
   CStruct(Int)
   CUnion(Int)
   CEnum(Int)
   CBitInt(Int)
-} derive(Eq)
+}
 
 pub struct CheckedFunc {
   name : String
   ty : CType
+  params : Array[(String, CType)]
+  locals : Array[(String, CType)]
+  is_vararg : Bool
   body : TStmt
+}
+
+pub struct CheckedGlobal {
+  name : String
+  ty : CType
 }
 
 pub struct CheckedProgram {
   layouts : Array[Layout]
   funcs : Array[CheckedFunc]
+  globals : Array[CheckedGlobal]
   strings : Array[String]
   diags : Array[Diag]
 }
@@ -92,6 +114,13 @@ pub struct Ctx {
   mut ret_ty : CType?
   strings : Array[String]
   funcs : Array[CheckedFunc]
+  globals : Array[CheckedGlobal]
+  mut cur_params : Array[(String, CType)]
+  mut cur_locals : Array[(String, CType)]
+  mut loop_depth : Int
+  mut switch_depth : Int
+  mut labels : Map[String, Bool]
+  mut gotos : Array[String]
 }
 
 pub struct Diag {
@@ -178,6 +207,7 @@ pub(all) enum TExprKind {
   TFlt(Double, Bool)
   TStr(Int)
   TVar(String)
+  TLabelAddr(String)
   TBin(String, TExpr, TExpr)
   TUn(String, TExpr)
   TAssign(TExpr, TExpr)
@@ -191,7 +221,11 @@ pub(all) enum TExprKind {
   TDeref(TExpr)
   TSizeof(Int)
   TAlignof(Int)
+  TSizeofVLA(TExpr)
   TStmtExpr(Array[TStmt])
+  TCompoundLit(Array[(Int, TExpr)])
+  TVaArg(TExpr)
+  TUnsupported(String)
 }
 
 pub struct TStmt {
@@ -210,6 +244,8 @@ pub(all) enum TStmtKind {
   KSContinue
   KSLabel(String)
   KSGoto(String)
+  KSGotoPtr(TExpr)
+  KSSwitch(TExpr, Array[(Int64, TStmt)], TStmt?)
   KSDecl(String, CType, TExpr?)
   KSAggInit(String, CType, Array[(Int, TExpr)])
   KSEmpty

@@ -7,12 +7,20 @@ pub struct Ctx {
   mut ret_ty : CType?
   strings : Array[String]
   funcs : Array[CheckedFunc]
+  globals : Array[CheckedGlobal]
+  mut cur_params : Array[(String, CType)]
+  mut cur_locals : Array[(String, CType)]
+  mut loop_depth : Int
+  mut switch_depth : Int
+  mut labels : Map[String, Bool]
+  mut gotos : Array[String]
 }
 
 ///|
 pub struct CheckedProgram {
   layouts : Array[Layout]
   funcs : Array[CheckedFunc]
+  globals : Array[CheckedGlobal]
   strings : Array[String]
   diags : Array[Diag]
 }
@@ -213,6 +221,7 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
                 storage: storage_of(spec),
                 value: 0L,
               })
+              ctx.globals.push({ name: n, ty, })
             }
           None => ()
         }
@@ -235,6 +244,12 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
         })
       }
       ctx.scopes.push()
+      ctx.cur_params = []
+      ctx.cur_locals = []
+      ctx.loop_depth = 0
+      ctx.switch_depth = 0
+      ctx.gotos = []
+      ctx.labels = Map::new()
       ctx.scopes.define({
         name: "__func__",
         kind: SymVar,
@@ -264,7 +279,8 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
         let pb = declspec_to_type(pd.spec, ctx)
         let pty = build_type(pd.decl, pb, ctx)
         match decl_name(pd.decl) {
-          Some(pn) =>
+          Some(pn) => {
+            ctx.cur_params.push((pn, pty))
             ctx.scopes.define({
               name: pn,
               kind: SymVar,
@@ -272,12 +288,30 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
               storage: StNone,
               value: 0L,
             })
+          }
           None => ()
         }
       }
       let tb = check_stmt(body, ctx)
+      for g in ctx.gotos {
+        if !ctx.labels.contains(g) {
+          ctx.diags.error("goto to undefined label: " + g)
+        }
+      }
+      collect_locals(tb, ctx.cur_locals)
       ctx.scopes.pop()
-      ctx.funcs.push({ name, ty, body: tb, })
+      let is_vararg = match ty {
+        CFunc(_, _, v) => v
+        _ => false
+      }
+      ctx.funcs.push({
+        name,
+        ty,
+        params: ctx.cur_params,
+        locals: ctx.cur_locals,
+        is_vararg,
+        body: tb,
+      })
     }
     @front.EStaticAssert(e, _msg) =>
       if const_eval_int(e, ctx) == 0L {
@@ -297,9 +331,36 @@ pub fn check(tu : @front.TranslationUnit) -> CheckedProgram {
     ret_ty: None,
     strings: [],
     funcs: [],
+    globals: [],
+    cur_params: [],
+    cur_locals: [],
+    loop_depth: 0,
+    switch_depth: 0,
+    labels: Map::new(),
+    gotos: [],
   }
   let va_list_ty = CPtr(CChar(true))
-  for b in ["va_start", "va_end", "va_copy", "va_arg"] {
+  ctx.scopes.define({
+    name: "alloca",
+    kind: SymFunc,
+    ty: CFunc(CPtr(CVoid), [CInt(false)], false),
+    storage: StNone,
+    value: 0L,
+  })
+  for b in ["__builtin_alloca", "alloca"] {
+    ctx.scopes.define({
+      name: b,
+      kind: SymFunc,
+      ty: CFunc(CPtr(CVoid), [CInt(false)], false),
+      storage: StNone,
+      value: 0L,
+    })
+  }
+  for
+    b in [
+      "va_start", "va_end", "va_copy", "va_arg", "__builtin_va_start", "__builtin_va_end",
+      "__builtin_va_copy", "__builtin_va_arg",
+    ] {
     ctx.scopes.define({
       name: b,
       kind: SymFunc,
@@ -314,6 +375,7 @@ pub fn check(tu : @front.TranslationUnit) -> CheckedProgram {
   {
     layouts: ctx.layouts,
     funcs: ctx.funcs,
+    globals: ctx.globals,
     strings: ctx.strings,
     diags: ctx.diags.items,
   }

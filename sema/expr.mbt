@@ -26,9 +26,9 @@ fn is_long_ty(t : CType) -> Bool {
 
 ///|
 fn promote_arith(a : CType, b : CType) -> CType {
-  if a == CDouble || b == CDouble {
+  if ty_eq(a, CDouble) || ty_eq(b, CDouble) {
     CDouble
-  } else if a == CFloat || b == CFloat {
+  } else if ty_eq(a, CFloat) || ty_eq(b, CFloat) {
     CFloat
   } else if is_long_long_ty(a) || is_long_long_ty(b) {
     CLongLong(is_signed(a) && is_signed(b))
@@ -36,6 +36,32 @@ fn promote_arith(a : CType, b : CType) -> CType {
     CLong(is_signed(a) && is_signed(b))
   } else {
     CInt(is_signed(a) && is_signed(b))
+  }
+}
+
+///|
+fn is_func_ty(t : CType) -> Bool {
+  match t {
+    CFunc(_, _, _) => true
+    _ => false
+  }
+}
+
+///|
+/// Common type of a conditional expression.
+pub fn common_type(a : CType, b : CType) -> CType {
+  if ty_eq(a, b) {
+    a
+  } else if is_func_ty(a) {
+    decay(a)
+  } else if is_func_ty(b) {
+    decay(b)
+  } else if is_arith(a) && is_arith(b) {
+    promote_arith(a, b)
+  } else if is_ptr(a) {
+    a
+  } else {
+    b
   }
 }
 
@@ -57,12 +83,24 @@ fn field_of(layout : Layout, name : String) -> Field? {
 ///|
 pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
   match e {
-    @front.EInt(s) => mk_expr(TInt(parse_int_lit(s)), CInt(false), false)
-    @front.EChar(s) => mk_expr(TInt(parse_char_lit(s)), CInt(false), false)
+    @front.EInt(s) => mk_expr(TInt(parse_int_lit(s)), CInt(true), false)
+    @front.EChar(s) => mk_expr(TInt(parse_char_lit(s)), CInt(true), false)
     @front.EBool(b) =>
       mk_expr(TInt(if b { 1L } else { 0L }), CInt(false), false)
     @front.ENullptr => mk_expr(TInt(0L), CPtr(CVoid), false)
-    @front.EFloat(s) => mk_expr(TFlt(parse_float_lit(s), false), CDouble, false)
+    @front.EFloat(s) => {
+      let last = s.to_array()[s.length() - 1]
+      let is_f = last == 'f' || last == 'F'
+      mk_expr(
+        TFlt(parse_float_lit(s), is_f),
+        if is_f {
+          CFloat
+        } else {
+          CDouble
+        },
+        false,
+      )
+    }
     @front.EString(parts) => {
       let mut joined = ""
       for p in parts {
@@ -89,7 +127,7 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
     @front.EComma(l, r) => {
       let tl = check_expr(l, ctx)
       let tr = check_expr(r, ctx)
-      mk_expr(TComma(tl, tr), tr.ty, false)
+      mk_expr(TComma(tl, tr), tr.ty, tr.lvalue)
     }
     @front.EAssign(op, l, r) => {
       let tl = check_expr(l, ctx)
@@ -112,7 +150,7 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
       let tc = check_expr(c, ctx)
       let tt = check_expr(t, ctx)
       let tf = check_expr(f, ctx)
-      mk_expr(TCond(tc, tt, tf), promote_arith(tt.ty, tf.ty), false)
+      mk_expr(TCond(tc, tt, tf), common_type(tt.ty, tf.ty), false)
     }
     @front.ECall(callee, args) => check_call(callee, args, ctx)
     @front.ECast(spec, d, x) => {
@@ -149,20 +187,22 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
     @front.EIndex(base, idx) => {
       let tb = check_expr(base, ctx)
       let ti = check_expr(idx, ctx)
-      let elem = match decay(tb.ty) {
-        CPtr(t) => t
-        CArray(t, _) => t
-        _ => {
-          ctx.diags.error("subscript on a non-pointer type")
-          CInt(false)
-        }
+      let (ptr_e, idx_e, elem) = match decay(tb.ty) {
+        CPtr(t) => (tb, ti, t)
+        _ =>
+          match decay(ti.ty) {
+            CPtr(t) => (ti, tb, t)
+            _ => {
+              ctx.diags.error("subscript on a non-pointer type")
+              (tb, ti, CInt(false))
+            }
+          }
       }
-      let deref = mk_expr(
-        TDeref(mk_expr(TBin("+", tb, ti), CPtr(elem), false)),
+      mk_expr(
+        TDeref(mk_expr(TBin("+", ptr_e, idx_e), CPtr(elem), false)),
         elem,
         true,
       )
-      deref
     }
     @front.ESizeofExpr(x) => {
       let tx = check_expr(x, ctx)
@@ -184,6 +224,7 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
     }
     @front.EGeneric(ctrl, assocs) => {
       let tc = check_expr(ctrl, ctx)
+      let tct = decay(tc.ty)
       let mut chosen : TExpr? = None
       let mut dflt : TExpr? = None
       for a in assocs {
@@ -195,7 +236,7 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
               None => @front.DAbstract
             }
             let ty = build_type(d, base, ctx)
-            if ty == tc.ty {
+            if ty_eq(ty, tct) {
               chosen = Some(check_expr(a.expr, ctx))
             }
           }
@@ -218,7 +259,66 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
       let body = check_block_items(items, ctx)
       mk_expr(TStmtExpr(body), CInt(false), false)
     }
-    _ => err_expr(ctx)
+    @front.ECompound(spec, d, init) => {
+      let base = declspec_to_type(spec, ctx)
+      let ty = build_type(d, base, ctx)
+      let stores : Array[(Int, TExpr)] = []
+      check_init_into(init, ty, 0, stores, ctx)
+      mk_expr(TCompoundLit(stores), ty, true)
+    }
+    @front.ETypesCompatible(s1, d1, s2, d2) => {
+      let b1 = declspec_to_type(s1, ctx)
+      let t1 = build_type(d1, b1, ctx)
+      let b2 = declspec_to_type(s2, ctx)
+      let t2 = build_type(d2, b2, ctx)
+      mk_expr(TInt(if ty_eq(t1, t2) { 1L } else { 0L }), CInt(false), false)
+    }
+    @front.EOffsetof(spec, d, designators) => {
+      let base = declspec_to_type(spec, ctx)
+      let mut ty = build_type(d, base, ctx)
+      let mut off = 0
+      for dz in designators {
+        match dz {
+          @front.DField(n) =>
+            match ty {
+              CStruct(i) | CUnion(i) =>
+                match field_of(ctx.layouts[i], n) {
+                  Some(f) => {
+                    off = off + f.offset
+                    ty = f.ty
+                  }
+                  None => ctx.diags.error("__builtin_offsetof: no member " + n)
+                }
+              _ => ctx.diags.error("__builtin_offsetof: not an aggregate")
+            }
+          @front.DIndex(e) =>
+            match ty {
+              CArray(el, _) => {
+                off = off +
+                  const_eval_int(e, ctx).to_int() * size_of_ty(el, ctx.layouts)
+                ty = el
+              }
+              _ => ctx.diags.error("__builtin_offsetof: not an array")
+            }
+          _ => ()
+        }
+      }
+      mk_expr(TInt(off.to_int64()), CLong(false), false)
+    }
+    @front.EVaArg(x, spec, d) => {
+      let tx = check_expr(x, ctx)
+      let base = declspec_to_type(spec, ctx)
+      let ty = build_type(d, base, ctx)
+      mk_expr(TVaArg(tx), ty, false)
+    }
+    @front.ETemp => {
+      ctx.diags.error("internal temporary expression in source")
+      err_expr(ctx)
+    }
+    _ => {
+      ctx.diags.error("unsupported expression")
+      err_expr(ctx)
+    }
   }
 }
 
@@ -255,10 +355,21 @@ fn check_binary(
 
 ///|
 fn check_unary(op : String, x : @front.Expr, ctx : Ctx) -> TExpr {
+  if op == "&&" {
+    let n = match x {
+      @front.EIdent(n) => n
+      _ => ""
+    }
+    return mk_expr(TLabelAddr(n), CPtr(CVoid), false)
+  }
   let tx = check_expr(x, ctx)
   match op {
     "&" =>
-      if tx.lvalue {
+      if tx.lvalue ||
+        (match tx.ty {
+          CFunc(_, _, _) => true
+          _ => false
+        }) {
         mk_expr(TAddr(tx), CPtr(tx.ty), false)
       } else {
         ctx.diags.error("cannot take the address of an rvalue")
@@ -286,6 +397,24 @@ fn check_call(
   args : Array[@front.Expr],
   ctx : Ctx,
 ) -> TExpr {
+  match callee {
+    @front.EIdent(n) =>
+      if n.has_prefix("__c11_atomic_") ||
+        n.has_prefix("__atomic_") ||
+        n.has_prefix("atomic_") {
+        let targs0 : Array[TExpr] = []
+        for a in args {
+          targs0.push(check_expr(a, ctx))
+        }
+        let t = if targs0.length() > 0 { targs0[0].ty } else { CInt(false) }
+        return mk_expr(
+          TCall(n, mk_expr(TInt(0L), CPtr(CVoid), false), targs0),
+          t,
+          false,
+        )
+      }
+    _ => ()
+  }
   let tc = check_expr(callee, ctx)
   let targs : Array[TExpr] = []
   for a in args {
@@ -312,8 +441,8 @@ fn check_call(
       ("", CInt(false), [], true)
     }
   }
-  if !va && targs.length() > params.length() {
-    ctx.diags.error("too many arguments to function")
+  if !va && params.length() > 0 && targs.length() > params.length() {
+    ctx.diags.error("too many arguments to function: " + name)
   }
   mk_expr(TCall(name, tc, targs), ret, false)
 }
