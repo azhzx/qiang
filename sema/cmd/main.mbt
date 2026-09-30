@@ -42,8 +42,15 @@ fn main {
   for d in r.diags {
     match d.sev {
       @sema.SevError =>
-        if shown < 3 {
-          println("  error: " + d.msg)
+        if shown < 10 {
+          println(
+            "  " +
+            d.line.to_string() +
+            ":" +
+            d.col.to_string() +
+            ": error: " +
+            d.msg,
+          )
           shown = shown + 1
         }
       _ => ()

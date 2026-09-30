@@ -574,7 +574,7 @@ fn Parser::parse_declspec(self : Parser) -> DeclSpec {
           go = false
         }
       Ident(n) =>
-        if self.typedefs.contains(n) {
+        if self.typedefs.contains(n) && type_specs.length() == 0 {
           type_specs.push(TTypedefName(n))
           self.pos = self.pos + 1
         } else {
@@ -780,6 +780,13 @@ fn decl_name(d : Declarator) -> String? {
 
 ///|
 fn Parser::parse_external_decl(self : Parser) -> ExternalDecl {
+  let tok = self.peek()
+  let pos = Span::{ line: tok.line, col: tok.col, }
+  { kind: self.parse_external_decl_kind(), pos, }
+}
+
+///|
+fn Parser::parse_external_decl_kind(self : Parser) -> ExternalDeclKind {
   self.skip_attrs()
   if self.at_kw("_Static_assert") || self.at_kw("static_assert") {
     self.pos = self.pos + 1
@@ -814,7 +821,7 @@ fn Parser::parse_external_decl(self : Parser) -> ExternalDecl {
   }
   let first = self.parse_init_declarator()
   if self.at_punct("{") && is_function_declarator(first.decl) {
-    let body = self.parse_compound()
+    let body = self.parse_compound_stmt()
     return EFunc(spec, first.decl, body)
   }
   let decls : Array[InitDeclarator] = [first]
@@ -867,7 +874,14 @@ fn is_function_declarator(d : Declarator) -> Bool {
 }
 
 ///|
-fn Parser::parse_compound(self : Parser) -> Stmt {
+fn Parser::parse_compound_stmt(self : Parser) -> Stmt {
+  let tok = self.peek()
+  let pos = Span::{ line: tok.line, col: tok.col, }
+  { kind: self.parse_compound(), pos, }
+}
+
+///|
+fn Parser::parse_compound(self : Parser) -> StmtKind {
   self.expect_punct("{")
   let items : Array[BlockItem] = []
   while !self.eat_punct("}") {
@@ -900,6 +914,13 @@ fn Parser::parse_compound(self : Parser) -> Stmt {
 
 ///|
 fn Parser::parse_stmt(self : Parser) -> Stmt {
+  let tok = self.peek()
+  let pos = Span::{ line: tok.line, col: tok.col, }
+  { kind: self.parse_stmt_kind(), pos, }
+}
+
+///|
+fn Parser::parse_stmt_kind(self : Parser) -> StmtKind {
   self.skip_attrs()
   if self.at_punct("{") {
     self.parse_compound()

@@ -55,3 +55,20 @@ test "sema: switch keeps case structure" {
   assert_eq(r.diags.length(), 0)
   assert_eq(r.funcs.length(), 1)
 }
+
+///|
+test "sema: typedef redefinition and shadowing" {
+  let tu = @front.parse(
+    "int main() { typedef int t; typedef struct {int a;} t; t y; y.a = 1; return y.a; }",
+  )
+  let r = check(tu)
+  assert_eq(r.diags.length(), 0)
+}
+
+///|
+test "sema: diagnostics carry a position" {
+  let tu = @front.parse("int main() {\n  int x;\n  return y;\n}")
+  let r = check(tu)
+  assert_true(r.diags.length() > 0)
+  assert_true(r.diags[0].line > 0)
+}

@@ -226,7 +226,7 @@ fn check_block_item(it : @front.BlockItem, ctx : Ctx) -> TStmt {
 fn is_case_item(it : @front.BlockItem) -> Bool {
   match it {
     @front.BStmt(s) =>
-      match s {
+      match s.kind {
         @front.SCase(_, _) | @front.SCaseRange(_, _, _) | @front.SDefault(_) =>
           true
         _ => false
@@ -241,7 +241,7 @@ fn check_switch(ctrl : @front.Expr, body : @front.Stmt, ctx : Ctx) -> TStmt {
   ctx.switch_depth = ctx.switch_depth + 1
   let cases : Array[(Int64, TStmt)] = []
   let mut dflt : TStmt? = None
-  match body {
+  match body.kind {
     @front.SCompound(items) => {
       let mut i = 0
       let n = items.length()
@@ -251,33 +251,37 @@ fn check_switch(ctrl : @front.Expr, body : @front.Stmt, ctx : Ctx) -> TStmt {
           let vals : Array[Int64] = []
           let mut is_default = false
           match items[i] {
-            @front.BStmt(@front.SCase(e, st)) => {
-              vals.push(const_eval_int(e, ctx))
-              match st {
-                Some(x) => arr.push(check_stmt(x, ctx))
-                None => ()
+            @front.BStmt(sc) =>
+              match sc.kind {
+                @front.SCase(e, st) => {
+                  vals.push(const_eval_int(e, ctx))
+                  match st {
+                    Some(x) => arr.push(check_stmt(x, ctx))
+                    None => ()
+                  }
+                }
+                @front.SCaseRange(lo, hi, st) => {
+                  let a = const_eval_int(lo, ctx)
+                  let b = const_eval_int(hi, ctx)
+                  let mut v = a
+                  while v <= b {
+                    vals.push(v)
+                    v = v + 1L
+                  }
+                  match st {
+                    Some(x) => arr.push(check_stmt(x, ctx))
+                    None => ()
+                  }
+                }
+                @front.SDefault(st) => {
+                  is_default = true
+                  match st {
+                    Some(x) => arr.push(check_stmt(x, ctx))
+                    None => ()
+                  }
+                }
+                _ => ()
               }
-            }
-            @front.BStmt(@front.SCaseRange(lo, hi, st)) => {
-              let a = const_eval_int(lo, ctx)
-              let b = const_eval_int(hi, ctx)
-              let mut v = a
-              while v <= b {
-                vals.push(v)
-                v = v + 1L
-              }
-              match st {
-                Some(x) => arr.push(check_stmt(x, ctx))
-                None => ()
-              }
-            }
-            @front.BStmt(@front.SDefault(st)) => {
-              is_default = true
-              match st {
-                Some(x) => arr.push(check_stmt(x, ctx))
-                None => ()
-              }
-            }
             _ => ()
           }
           let mut j = i + 1
@@ -329,7 +333,9 @@ fn check_return(e : @front.Expr?, ctx : Ctx) -> TStmt {
 
 ///|
 pub fn check_stmt(s : @front.Stmt, ctx : Ctx) -> TStmt {
-  match s {
+  ctx.diags.cur_line = s.pos.line
+  ctx.diags.cur_col = s.pos.col
+  match s.kind {
     @front.SCompound(items) => {
       ctx.scopes.push()
       let body = check_block_items(items, ctx)

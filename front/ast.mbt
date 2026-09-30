@@ -3,6 +3,13 @@
 /// No semantic information: names/types are resolved later by sema.
 
 ///|
+/// Source position (1-based).
+pub struct Span {
+  line : Int
+  col : Int
+}
+
+///|
 pub struct TranslationUnit {
   decls : Array[ExternalDecl]
 }
@@ -92,13 +99,19 @@ pub(all) enum Designator {
 }
 
 ///|
-pub(all) enum ExternalDecl {
+pub(all) enum ExternalDeclKind {
   EFunc(DeclSpec, Declarator, Stmt)
   EDecl(DeclSpec, Array[InitDeclarator])
   EStaticAssert(Expr, String?)
   EAsm(String)
   EPragma(String)
   EEmpty
+}
+
+///|
+pub struct ExternalDecl {
+  kind : ExternalDeclKind
+  pos : Span
 }
 
 ///|
@@ -114,7 +127,7 @@ pub(all) enum ForInit {
 }
 
 ///|
-pub(all) enum Stmt {
+pub(all) enum StmtKind {
   SCompound(Array[BlockItem])
   SExpr(Expr?)
   SIf(Expr, Stmt, Stmt?)
@@ -136,6 +149,12 @@ pub(all) enum Stmt {
   SAsm(String)
   SPragma(String)
   SEmpty
+}
+
+///|
+pub struct Stmt {
+  kind : StmtKind
+  pos : Span
 }
 
 ///|

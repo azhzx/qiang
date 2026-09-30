@@ -93,7 +93,12 @@ pub(all) enum Expr {
   ETemp
 }
 
-pub(all) enum ExternalDecl {
+pub struct ExternalDecl {
+  kind : ExternalDeclKind
+  pos : Span
+}
+
+pub(all) enum ExternalDeclKind {
   EFunc(DeclSpec, Declarator, Stmt)
   EDecl(DeclSpec, Array[InitDeclarator])
   EStaticAssert(Expr, String?)
@@ -129,12 +134,22 @@ pub struct ParamDecl {
   decl : Declarator
 }
 
+pub struct Span {
+  line : Int
+  col : Int
+}
+
 pub(all) enum StdMode {
   C11
   C23
 } derive(Eq)
 
-pub(all) enum Stmt {
+pub struct Stmt {
+  kind : StmtKind
+  pos : Span
+}
+
+pub(all) enum StmtKind {
   SCompound(Array[BlockItem])
   SExpr(Expr?)
   SIf(Expr, Stmt, Stmt?)
