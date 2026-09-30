@@ -17,9 +17,19 @@ priv struct Cg {
 
 ///|
 fn cls_of(ty : Ty) -> @types.Class {
-  match decay(ty) {
-    TLong | TPtr(_) => @types.Kl
-    _ => @types.Kw
+  match ty {
+    TVoid => @types.Kw
+    TBool | TChar | TSChar | TUChar | TShort | TUShort | TInt | TUInt =>
+      @types.Kw
+    TLong
+    | TULong
+    | TLongLong
+    | TULongLong
+    | TPtr(_)
+    | TArr(_, _)
+    | TStruct(_) => @types.Kl
+    TFloat => @types.Ks
+    TDouble => @types.Kd
   }
 }
 
@@ -27,7 +37,15 @@ fn cls_of(ty : Ty) -> @types.Class {
 fn ret_of(ty : Ty) -> @ir_builder.Ret {
   match ty {
     TVoid => @ir_builder.Void
-    TLong | TPtr(_) => @ir_builder.Long
+    TFloat => @ir_builder.Single
+    TDouble => @ir_builder.Double
+    TLong
+    | TULong
+    | TLongLong
+    | TULongLong
+    | TPtr(_)
+    | TArr(_, _)
+    | TStruct(_) => @ir_builder.Long
     _ => @ir_builder.Word
   }
 }
@@ -41,17 +59,126 @@ fn is_aggregate(ty : Ty) -> Bool {
 }
 
 ///|
-fn Cg::emit(c : Cg, f : () -> Unit) -> Unit {
-  if !c.open {
-    return
+fn is_ptr(ty : Ty) -> Bool {
+  match decay(ty) {
+    TPtr(_) => true
+    _ => false
   }
-  f()
 }
 
 ///|
-fn Cg::switch(c : Cg, blk : Int) -> Unit {
-  c.b.switch_to(c.fid, blk)
-  c.open = true
+fn wider(l : Ty, r : Ty) -> @types.Class {
+  let a = cls_of(l)
+  let b = cls_of(r)
+  if a == @types.Kd || b == @types.Kd {
+    @types.Kd
+  } else if a == @types.Ks || b == @types.Ks {
+    @types.Ks
+  } else if a == @types.Kl || b == @types.Kl {
+    @types.Kl
+  } else {
+    @types.Kw
+  }
+}
+
+///|
+fn Cg::zero_of(c : Cg, cls : @types.Class) -> Int {
+  if cls == @types.Ks {
+    c.b.sconst(c.fid, 0.0)
+  } else if cls == @types.Kd {
+    c.b.fconst(c.fid, 0.0)
+  } else {
+    c.b.iconst(c.fid, 0L)
+  }
+}
+
+///|
+fn is_lit(e : Expr) -> Bool {
+  match e.kind {
+    ENum(_) | EFlt(_, _) => true
+    _ => false
+  }
+}
+
+///|
+fn Cg::norm_bool(c : Cg, v : Int) -> Int {
+  c.b.cmp(c.fid, @types.Cnew, @types.Kw, v, c.b.iconst(c.fid, 0L))
+}
+
+///|
+fn Cg::one_of(c : Cg, cls : @types.Class) -> Int {
+  if cls == @types.Ks {
+    c.b.sconst(c.fid, 1.0)
+  } else if cls == @types.Kd {
+    c.b.fconst(c.fid, 1.0)
+  } else {
+    c.b.iconst(c.fid, 1L)
+  }
+}
+
+///|
+fn Cg::coerce(c : Cg, v : Int, from : @types.Class, to : @types.Class) -> Int {
+  if from == to {
+    v
+  } else if from == @types.Kw && to == @types.Kl {
+    c.b.unop(c.fid, @types.Extsw, @types.Kl, @types.Kl, v)
+  } else if from == @types.Kl && to == @types.Kw {
+    c.b.unop(c.fid, @types.Copy, @types.Kw, @types.Kw, v)
+  } else if from == @types.Kw && to == @types.Ks {
+    c.b.unop(c.fid, @types.Swtof, @types.Ks, @types.Ks, v)
+  } else if from == @types.Kl && to == @types.Ks {
+    c.b.unop(c.fid, @types.Sltof, @types.Ks, @types.Ks, v)
+  } else if from == @types.Kw && to == @types.Kd {
+    c.b.unop(c.fid, @types.Swtof, @types.Kd, @types.Kd, v)
+  } else if from == @types.Kl && to == @types.Kd {
+    c.b.unop(c.fid, @types.Sltof, @types.Kd, @types.Kd, v)
+  } else if from == @types.Ks && to == @types.Kd {
+    c.b.unop(c.fid, @types.Exts, @types.Kd, @types.Kd, v)
+  } else if from == @types.Kd && to == @types.Ks {
+    c.b.unop(c.fid, @types.Truncd, @types.Ks, @types.Ks, v)
+  } else if from == @types.Ks && to == @types.Kw {
+    c.b.unop(c.fid, @types.Stosi, @types.Kw, @types.Kw, v)
+  } else if from == @types.Kd && to == @types.Kw {
+    c.b.unop(c.fid, @types.Dtosi, @types.Kw, @types.Kw, v)
+  } else if from == @types.Ks && to == @types.Kl {
+    c.b.unop(c.fid, @types.Stosi, @types.Kl, @types.Kl, v)
+  } else if from == @types.Kd && to == @types.Kl {
+    c.b.unop(c.fid, @types.Dtosi, @types.Kl, @types.Kl, v)
+  } else {
+    v
+  }
+}
+
+///|
+fn Cg::load_scalar(c : Cg, ty : Ty, addr : Int) -> Int {
+  match ty {
+    TBool | TChar | TSChar => c.b.load(c.fid, @types.Loadsb, @types.Kw, addr)
+    TUChar => c.b.load(c.fid, @types.Loadub, @types.Kw, addr)
+    TShort => c.b.load(c.fid, @types.Loadsh, @types.Kw, addr)
+    TUShort => c.b.load(c.fid, @types.Loaduh, @types.Kw, addr)
+    TInt => c.b.load(c.fid, @types.Loadsw, @types.Kw, addr)
+    TUInt => c.b.load(c.fid, @types.Loaduw, @types.Kw, addr)
+    TLong | TULong | TLongLong | TULongLong | TPtr(_) =>
+      c.b.load(c.fid, @types.Load, @types.Kl, addr)
+    TFloat => c.b.load(c.fid, @types.Load, @types.Ks, addr)
+    TDouble => c.b.load(c.fid, @types.Load, @types.Kd, addr)
+    _ => addr
+  }
+}
+
+///|
+fn Cg::store_scalar(c : Cg, ty : Ty, val : Int, addr : Int) -> Unit {
+  match ty {
+    TBool | TChar | TSChar | TUChar =>
+      c.b.store(c.fid, @types.Storeb, @types.Kw, val, addr)
+    TShort | TUShort => c.b.store(c.fid, @types.Storeh, @types.Kw, val, addr)
+    TInt | TUInt => c.b.store(c.fid, @types.Storew, @types.Kw, val, addr)
+    TLong | TULong | TLongLong | TULongLong | TPtr(_) =>
+      c.b.store(c.fid, @types.Storel, @types.Kl, val, addr)
+    TFloat => c.b.store(c.fid, @types.Stores, @types.Ks, val, addr)
+    TDouble => c.b.store(c.fid, @types.Stored, @types.Kd, val, addr)
+    _ => abort("qpcc: cannot store an aggregate")
+  }
 }
 
 ///|
@@ -60,43 +187,9 @@ fn Cg::new_block(c : Cg, name : String) -> Int {
 }
 
 ///|
-fn Cg::load_scalar(c : Cg, ty : Ty, addr : Int) -> Int {
-  match ty {
-    TChar => c.b.load(c.fid, @types.Loadsb, @types.Kw, addr)
-    TInt => c.b.load(c.fid, @types.Loadsw, @types.Kw, addr)
-    TLong | TPtr(_) => c.b.load(c.fid, @types.Load, @types.Kl, addr)
-    _ => addr
-  }
-}
-
-///|
-fn Cg::store_scalar(c : Cg, ty : Ty, val : Int, addr : Int) -> Unit {
-  match ty {
-    TChar => c.b.store(c.fid, @types.Storeb, @types.Kw, val, addr)
-    TInt => c.b.store(c.fid, @types.Storew, @types.Kw, val, addr)
-    TLong | TPtr(_) => c.b.store(c.fid, @types.Storel, @types.Kl, val, addr)
-    _ => abort("qpcc: cannot store an aggregate")
-  }
-}
-
-///|
-fn promote(c : Cg, v : Int, from : @types.Class, to : @types.Class) -> Int {
-  if from == to {
-    v
-  } else if from == @types.Kw && to == @types.Kl {
-    c.b.unop(c.fid, @types.Extsw, @types.Kw, @types.Kl, v)
-  } else {
-    v
-  }
-}
-
-///|
-fn wider(l : Ty, r : Ty) -> @types.Class {
-  if cls_of(l) == @types.Kl || cls_of(r) == @types.Kl {
-    @types.Kl
-  } else {
-    @types.Kw
-  }
+fn Cg::switch(c : Cg, blk : Int) -> Unit {
+  c.b.switch_to(c.fid, blk)
+  c.open = true
 }
 
 ///|
@@ -130,6 +223,12 @@ fn Cg::gen_addr(c : Cg, e : Expr) -> Int {
 fn Cg::gen_expr(c : Cg, e : Expr) -> Int {
   match e.kind {
     ENum(n) => c.b.iconst(c.fid, n)
+    EFlt(v, is_f) =>
+      if is_f {
+        c.b.sconst(c.fid, Float::from_double(v))
+      } else {
+        c.b.fconst(c.fid, v)
+      }
     EStr(id) => c.b.global(c.fid, c.str_labels[id])
     EVar(n) =>
       match c.locals.get(n) {
@@ -184,8 +283,19 @@ fn Cg::gen_expr(c : Cg, e : Expr) -> Int {
     EAssign(l, r) => {
       let a = c.gen_addr(l)
       let v = c.gen_expr(r)
-      c.store_scalar(l.ty, v, a)
-      v
+      let vv = if is_lit(r) {
+        v
+      } else {
+        c.coerce(v, cls_of(r.ty), cls_of(l.ty))
+      }
+      if l.ty == TBool {
+        let b = c.norm_bool(vv)
+        c.store_scalar(TBool, b, a)
+        b
+      } else {
+        c.store_scalar(l.ty, vv, a)
+        vv
+      }
     }
     EComma(a, b) => {
       let _ = c.gen_expr(a)
@@ -227,12 +337,18 @@ fn Cg::gen_expr(c : Cg, e : Expr) -> Int {
     ESizeofE(x) => c.b.iconst(c.fid, size_of(decay(x.ty), c.structs).to_int64())
     ECast(x) => {
       let v = c.gen_expr(x)
-      let want = cls_of(e.ty)
-      let have = cls_of(x.ty)
-      if want == @types.Kl && have == @types.Kw {
-        c.b.unop(c.fid, @types.Extsw, @types.Kw, @types.Kl, v)
+      if e.ty == TBool {
+        let cls = cls_of(x.ty)
+        let z = c.zero_of(cls)
+        c.b.cmp(
+          c.fid,
+          cmp_op("!=", cls, is_unsigned(x.ty), is_float(x.ty)),
+          cls,
+          v,
+          z,
+        )
       } else {
-        v
+        c.coerce(v, cls_of(x.ty), cls_of(e.ty))
       }
     }
   }
@@ -242,14 +358,24 @@ fn Cg::gen_expr(c : Cg, e : Expr) -> Int {
 fn Cg::gen_bin(c : Cg, op : String, l : Expr, r : Expr) -> Int {
   let lt = decay(l.ty)
   let rt = decay(r.ty)
+  let cls = wider(lt, rt)
+  let fl = is_float(lt) || is_float(rt)
+  let uns = is_unsigned(lt) || is_unsigned(rt)
   if op == "&&" || op == "||" {
-    let cls = wider(lt, rt)
-    let a = promote(c, c.gen_expr(l), cls_of(lt), cls)
-    let b = promote(c, c.gen_expr(r), cls_of(rt), cls)
-    let z = c.b.iconst(c.fid, 0L)
-    let nz = if cls == @types.Kl { @types.Cnel } else { @types.Cnew }
-    let ca = c.b.cmp(c.fid, nz, cls, a, z)
-    let cb = c.b.cmp(c.fid, nz, cls, b, z)
+    let a = c.gen_expr(l)
+    let av = c.coerce(a, cls_of(lt), cls)
+    let b = c.gen_expr(r)
+    let bv = c.coerce(b, cls_of(rt), cls)
+    let z = c.zero_of(cls)
+    let nz = if cls == @types.Ks || cls == @types.Kd {
+      @types.Cnes
+    } else if cls == @types.Kl {
+      @types.Cnel
+    } else {
+      @types.Cnew
+    }
+    let ca = c.b.cmp(c.fid, nz, cls, av, z)
+    let cb = c.b.cmp(c.fid, nz, cls, bv, z)
     let o = if op == "&&" { @types.And } else { @types.Or }
     c.b.arith(c.fid, o, @types.Kw, ca, cb)
   } else if prec_of(op) <= 7 &&
@@ -257,15 +383,16 @@ fn Cg::gen_bin(c : Cg, op : String, l : Expr, r : Expr) -> Int {
     op != "-" &&
     op != "<<" &&
     op != ">>" {
-    let cls = wider(lt, rt)
-    let a = promote(c, c.gen_expr(l), cls_of(lt), cls)
-    let b = promote(c, c.gen_expr(r), cls_of(rt), cls)
-    c.b.cmp(c.fid, cmp_op(op, cls), cls, a, b)
-  } else if op == "+" || op == "-" {
+    let a = c.gen_expr(l)
+    let av = c.coerce(a, cls_of(lt), cls)
+    let b = c.gen_expr(r)
+    let bv = c.coerce(b, cls_of(rt), cls)
+    c.b.cmp(c.fid, cmp_op(op, cls, uns, fl), cls, av, bv)
+  } else if (op == "+" || op == "-") && !fl {
     match (lt, rt) {
       (TPtr(el), _) if !is_ptr(r.ty) => {
         let base = c.gen_expr(l)
-        let idx = promote(c, c.gen_expr(r), cls_of(rt), @types.Kl)
+        let idx = c.coerce(c.gen_expr(r), cls_of(rt), @types.Kl)
         let sz = size_of(el, c.structs)
         let off = c.b.arith(
           c.fid,
@@ -291,7 +418,7 @@ fn Cg::gen_bin(c : Cg, op : String, l : Expr, r : Expr) -> Int {
       }
       (_, TPtr(el)) => {
         let base = c.gen_expr(r)
-        let idx = promote(c, c.gen_expr(l), cls_of(lt), @types.Kl)
+        let idx = c.coerce(c.gen_expr(l), cls_of(lt), @types.Kl)
         let sz = size_of(el, c.structs)
         let off = c.b.arith(
           c.fid,
@@ -303,56 +430,103 @@ fn Cg::gen_bin(c : Cg, op : String, l : Expr, r : Expr) -> Int {
         c.b.arith(c.fid, @types.Add, @types.Kl, base, off)
       }
       _ => {
-        let cls = wider(lt, rt)
-        let a = promote(c, c.gen_expr(l), cls_of(lt), cls)
-        let b = promote(c, c.gen_expr(r), cls_of(rt), cls)
-        c.b.arith(c.fid, arith_op(op), cls, a, b)
+        let a = c.coerce(c.gen_expr(l), cls_of(lt), cls)
+        let b = c.coerce(c.gen_expr(r), cls_of(rt), cls)
+        c.b.arith(c.fid, arith_op(op, cls, uns), cls, a, b)
       }
     }
   } else {
-    let cls = wider(lt, rt)
-    let a = promote(c, c.gen_expr(l), cls_of(lt), cls)
-    let b = promote(c, c.gen_expr(r), cls_of(rt), cls)
-    c.b.arith(c.fid, arith_op(op), cls, a, b)
+    let a = c.coerce(c.gen_expr(l), cls_of(lt), cls)
+    let b = c.coerce(c.gen_expr(r), cls_of(rt), cls)
+    c.b.arith(c.fid, arith_op(op, cls, uns), cls, a, b)
   }
 }
 
 ///|
-fn is_ptr(ty : Ty) -> Bool {
-  match decay(ty) {
-    TPtr(_) => true
-    _ => false
-  }
-}
-
-///|
-fn arith_op(op : String) -> @types.Op {
+fn arith_op(op : String, cls : @types.Class, uns : Bool) -> @types.Op {
+  let fl = cls == @types.Ks || cls == @types.Kd
   match op {
     "+" => @types.Add
     "-" => @types.Sub
     "*" => @types.Mul
-    "/" => @types.Div
-    "%" => @types.Rem
+    "/" => if fl { @types.Div } else if uns { @types.Udiv } else { @types.Div }
+    "%" => if uns { @types.Urem } else { @types.Rem }
     "&" => @types.And
     "|" => @types.Or
     "^" => @types.Xor
     "<<" => @types.Shl
-    ">>" => @types.Sar
+    ">>" => if uns { @types.Shr } else { @types.Sar }
     _ => abort("qpcc: unknown binary operator " + op)
   }
 }
 
 ///|
-fn cmp_op(op : String, cls : @types.Class) -> @types.Op {
-  let l = cls == @types.Kl
-  match op {
-    "==" => if l { @types.Ceql } else { @types.Ceqw }
-    "!=" => if l { @types.Cnel } else { @types.Cnew }
-    "<" => if l { @types.Csltl } else { @types.Csltw }
-    "<=" => if l { @types.Cslel } else { @types.Cslew }
-    ">" => if l { @types.Csgtl } else { @types.Csgtw }
-    ">=" => if l { @types.Csgel } else { @types.Csgew }
-    _ => abort("qpcc: unknown comparison " + op)
+fn cmp_op(op : String, cls : @types.Class, uns : Bool, fl : Bool) -> @types.Op {
+  if fl {
+    match op {
+      "==" => if cls == @types.Kd { @types.Ceqd } else { @types.Ceqs }
+      "!=" => if cls == @types.Kd { @types.Cned } else { @types.Cnes }
+      "<" => if cls == @types.Kd { @types.Cltd } else { @types.Clts }
+      "<=" => if cls == @types.Kd { @types.Cled } else { @types.Cles }
+      ">" => if cls == @types.Kd { @types.Cgtd } else { @types.Cgts }
+      ">=" => if cls == @types.Kd { @types.Cged } else { @types.Cges }
+      _ => abort("qpcc: unknown comparison " + op)
+    }
+  } else {
+    let l = cls == @types.Kl
+    match op {
+      "==" => if l { @types.Ceql } else { @types.Ceqw }
+      "!=" => if l { @types.Cnel } else { @types.Cnew }
+      "<" =>
+        if l {
+          if uns {
+            @types.Cultl
+          } else {
+            @types.Csltl
+          }
+        } else if uns {
+          @types.Cultw
+        } else {
+          @types.Csltw
+        }
+      "<=" =>
+        if l {
+          if uns {
+            @types.Culel
+          } else {
+            @types.Cslel
+          }
+        } else if uns {
+          @types.Culew
+        } else {
+          @types.Cslew
+        }
+      ">" =>
+        if l {
+          if uns {
+            @types.Cugtl
+          } else {
+            @types.Csgtl
+          }
+        } else if uns {
+          @types.Cugtw
+        } else {
+          @types.Csgtw
+        }
+      ">=" =>
+        if l {
+          if uns {
+            @types.Cugel
+          } else {
+            @types.Csgel
+          }
+        } else if uns {
+          @types.Cugew
+        } else {
+          @types.Csgew
+        }
+      _ => abort("qpcc: unknown comparison " + op)
+    }
   }
 }
 
@@ -362,7 +536,8 @@ fn Cg::gen_un(c : Cg, op : String, x : Expr) -> Int {
     "-" => {
       let cls = cls_of(x.ty)
       let v = c.gen_expr(x)
-      c.b.arith(c.fid, @types.Sub, cls, c.b.iconst(c.fid, 0L), v)
+      let z = c.zero_of(cls)
+      c.b.arith(c.fid, @types.Sub, cls, z, v)
     }
     "~" => {
       let cls = cls_of(x.ty)
@@ -372,29 +547,25 @@ fn Cg::gen_un(c : Cg, op : String, x : Expr) -> Int {
     "!" => {
       let cls = cls_of(x.ty)
       let v = c.gen_expr(x)
-      let z = c.b.iconst(c.fid, 0L)
+      let z = c.zero_of(cls)
       c.b.cmp(
         c.fid,
-        if cls == @types.Kl {
-          @types.Ceql
-        } else {
-          @types.Ceqw
-        },
+        cmp_op("==", cls, is_unsigned(x.ty), is_float(x.ty)),
         cls,
         v,
         z,
       )
     }
     _ => {
-      // pre++/pre--/post++/post--
       let pre = op == "pre++" || op == "pre--"
       let inc = op == "pre++" || op == "post++"
       let a = c.gen_addr(x)
       let ty = x.ty
       let old = c.load_scalar(ty, a)
+      let cls = cls_of(ty)
       let one = match decay(ty) {
         TPtr(el) => c.b.iconst(c.fid, size_of(el, c.structs).to_int64())
-        _ => c.b.iconst(c.fid, 1L)
+        _ => c.one_of(cls)
       }
       let nv = c.b.arith(
         c.fid,
@@ -403,7 +574,7 @@ fn Cg::gen_un(c : Cg, op : String, x : Expr) -> Int {
         } else {
           @types.Sub
         },
-        cls_of(ty),
+        cls,
         old,
         one,
       )
@@ -441,6 +612,8 @@ fn collect_locals(s : Stmt, out : Array[(String, Ty)]) -> Unit {
       collect_locals(b, out)
     }
     SDoWhile(b, _) => collect_locals(b, out)
+    SSwitch(_, b) => collect_locals(b, out)
+    SLabel(_, b) => collect_locals(b, out)
     _ => ()
   }
 }
@@ -451,7 +624,6 @@ fn Cg::gen_stmt(c : Cg, s : Stmt) -> Unit {
     SBlock(ss) =>
       for x in ss {
         if !c.open {
-          // unreachable statement: start a fresh dead block
           let dead = c.new_block("dead")
           c.switch(dead)
         }
@@ -465,7 +637,13 @@ fn Cg::gen_stmt(c : Cg, s : Stmt) -> Unit {
             None => abort("qpcc: unbound local")
           }
           let v = c.gen_expr(e)
-          c.store_scalar(ty, v, a)
+          let vv = if is_lit(e) {
+            v
+          } else {
+            c.coerce(v, cls_of(e.ty), cls_of(ty))
+          }
+          let vv2 = if ty == TBool { c.norm_bool(vv) } else { vv }
+          c.store_scalar(ty, vv2, a)
         }
         None => ()
       }
@@ -476,10 +654,12 @@ fn Cg::gen_stmt(c : Cg, s : Stmt) -> Unit {
       let v = match e {
         Some(x) => {
           let val = c.gen_expr(x)
-          let want = ret_of(c.ret_ty)
-          let have = cls_of(x.ty)
-          let wc = if want == @ir_builder.Long { @types.Kl } else { @types.Kw }
-          promote(c, val, have, wc)
+          let want = ret_of(c.ret_ty).cls()
+          if is_lit(x) {
+            val
+          } else {
+            c.coerce(val, cls_of(x.ty), want)
+          }
         }
         None => -1
       }
@@ -605,6 +785,7 @@ fn Cg::gen_stmt(c : Cg, s : Stmt) -> Unit {
       c.b.jmp(c.fid, b, [])
       c.open = false
     }
+    _ => abort("qpcc: switch/goto/label codegen not implemented yet")
   }
 }
 
@@ -627,15 +808,11 @@ fn Cg::gen_func(c : Cg, f : FuncDef) -> Unit {
   c.fid = fid
   c.ret_ty = f.ret
   c.open = true
-  // parameters
   for i in 0..<f.params.length() {
     let p = f.params[i]
     if p.name != "" {
-      let sz = if size_of(p.ty, c.structs) < 8 {
-        8
-      } else {
-        size_of(p.ty, c.structs)
-      }
+      let raw = size_of(p.ty, c.structs)
+      let sz = if raw < 8 { 8 } else { raw }
       let sv = c.b.iconst(fid, sz.to_int64())
       let slot = c.b.emit_ins(fid, @types.Alloc8, @types.Kl, @types.Kl, sv, -1)
       let pv = c.b.param(fid, i)
@@ -644,7 +821,6 @@ fn Cg::gen_func(c : Cg, f : FuncDef) -> Unit {
       c.local_ty.set(p.name, p.ty)
     }
   }
-  // locals
   let locs : Array[(String, Ty)] = []
   collect_locals(f.body, locs)
   for (n, t) in locs {
@@ -660,7 +836,7 @@ fn Cg::gen_func(c : Cg, f : FuncDef) -> Unit {
     let v = if ret_of(c.ret_ty) == @ir_builder.Void {
       -1
     } else {
-      c.b.iconst(fid, 0L)
+      c.zero_of(ret_of(c.ret_ty).cls())
     }
     c.b.ret(fid, v)
     c.open = false
@@ -677,14 +853,11 @@ pub fn compile_program(p : Program) -> @ir_builder.Builder raise {
     strs.push(label)
   }
   for g in p.globals {
-    let raw = size_of(g.ty, p.structs)
-    let n = if raw < 8 { 8 } else { raw }
     let v = match g.init {
       Some(x) => x
       None => 0L
     }
     b.data_bytes(g.name, false, le_bytes(v))
-    let _ = n
   }
   let c = Cg::{
     b,

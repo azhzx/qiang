@@ -17,7 +17,17 @@ pub fn compile_program(Program) -> @ir_builder.Builder raise
 
 pub fn decay(Ty) -> Ty
 
+pub fn is_arith(Ty) -> Bool
+
+pub fn is_float(Ty) -> Bool
+
 pub fn is_int(Ty) -> Bool
+
+pub fn is_signed(Ty) -> Bool
+
+pub fn is_unsigned(Ty) -> Bool
+
+pub fn not_implemented() -> Unit
 
 pub fn parse(String) -> Program
 
@@ -30,6 +40,7 @@ pub fn tokenize(String) -> Array[Tok]
 // Types and methods
 pub(all) enum EK {
   ENum(Int64)
+  EFlt(Double, Bool)
   EVar(String)
   EStr(Int)
   EBin(String, Expr, Expr)
@@ -87,6 +98,11 @@ pub(all) enum SK {
   SBreak
   SContinue
   SLocal(String, Ty, Expr?)
+  SSwitch(Expr, Stmt)
+  SCase(Int64)
+  SDefault
+  SGoto(String)
+  SLabel(String, Stmt)
 }
 
 pub struct Stmt {
@@ -98,11 +114,13 @@ pub struct StructDef {
   members : Array[(String, Ty, Int)]
   size : Int
   align : Int
+  is_union : Bool
 }
 
 pub(all) enum Tok {
   TIdent(String)
   TNum(Int64)
+  TFlt(Double, Bool)
   TStr(String)
   TKw(String)
   TPunct(String)
@@ -111,9 +129,20 @@ pub(all) enum Tok {
 
 pub(all) enum Ty {
   TVoid
+  TBool
   TChar
+  TSChar
+  TUChar
+  TShort
+  TUShort
   TInt
+  TUInt
   TLong
+  TULong
+  TLongLong
+  TULongLong
+  TFloat
+  TDouble
   TPtr(Ty)
   TArr(Ty, Int)
   TStruct(Int)

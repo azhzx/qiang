@@ -2,9 +2,20 @@
 /// C types for the QPCC subset.
 pub(all) enum Ty {
   TVoid
+  TBool
   TChar
+  TSChar
+  TUChar
+  TShort
+  TUShort
   TInt
+  TUInt
   TLong
+  TULong
+  TLongLong
+  TULongLong
+  TFloat
+  TDouble
   TPtr(Ty)
   TArr(Ty, Int)
   TStruct(Int)
@@ -16,11 +27,13 @@ pub struct StructDef {
   members : Array[(String, Ty, Int)]
   size : Int
   align : Int
+  is_union : Bool
 }
 
 ///|
 pub(all) enum EK {
   ENum(Int64)
+  EFlt(Double, Bool)
   EVar(String)
   EStr(Int)
   EBin(String, Expr, Expr)
@@ -55,6 +68,11 @@ pub(all) enum SK {
   SBreak
   SContinue
   SLocal(String, Ty, Expr?)
+  SSwitch(Expr, Stmt)
+  SCase(Int64)
+  SDefault
+  SGoto(String)
+  SLabel(String, Stmt)
 }
 
 ///|
@@ -94,10 +112,13 @@ pub struct Program {
 ///|
 pub fn size_of(ty : Ty, structs : Array[StructDef]) -> Int {
   match ty {
-    TVoid => 0
-    TChar => 1
-    TInt => 4
-    TLong => 8
+    TVoid => 1
+    TBool | TChar | TSChar | TUChar => 1
+    TShort | TUShort => 2
+    TInt | TUInt => 4
+    TLong | TULong | TLongLong | TULongLong => 8
+    TFloat => 4
+    TDouble => 8
     TPtr(_) => 8
     TArr(e, n) => size_of(e, structs) * n
     TStruct(i) => structs[i].size
@@ -108,9 +129,12 @@ pub fn size_of(ty : Ty, structs : Array[StructDef]) -> Int {
 pub fn align_of(ty : Ty, structs : Array[StructDef]) -> Int {
   match ty {
     TVoid => 1
-    TChar => 1
-    TInt => 4
-    TLong => 8
+    TBool | TChar | TSChar | TUChar => 1
+    TShort | TUShort => 2
+    TInt | TUInt => 4
+    TLong | TULong | TLongLong | TULongLong => 8
+    TFloat => 4
+    TDouble => 8
     TPtr(_) => 8
     TArr(e, _) => align_of(e, structs)
     TStruct(i) => structs[i].align
@@ -118,11 +142,49 @@ pub fn align_of(ty : Ty, structs : Array[StructDef]) -> Int {
 }
 
 ///|
+/// True for integer types (including _Bool and char).
 pub fn is_int(ty : Ty) -> Bool {
   match ty {
-    TChar | TInt | TLong => true
+    TBool
+    | TChar
+    | TSChar
+    | TUChar
+    | TShort
+    | TUShort
+    | TInt
+    | TUInt
+    | TLong
+    | TULong
+    | TLongLong
+    | TULongLong => true
     _ => false
   }
+}
+
+///|
+pub fn is_float(ty : Ty) -> Bool {
+  match ty {
+    TFloat | TDouble => true
+    _ => false
+  }
+}
+
+///|
+pub fn is_arith(ty : Ty) -> Bool {
+  is_int(ty) || is_float(ty)
+}
+
+///|
+pub fn is_unsigned(ty : Ty) -> Bool {
+  match ty {
+    TBool | TUChar | TUShort | TUInt | TULong | TULongLong | TPtr(_) => true
+    _ => false
+  }
+}
+
+///|
+pub fn is_signed(ty : Ty) -> Bool {
+  is_arith(ty) && !is_unsigned(ty)
 }
 
 ///|

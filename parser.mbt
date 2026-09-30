@@ -82,40 +82,124 @@ fn P::eat_ident(self : P) -> String? {
 }
 
 ///|
-fn P::at_type(self : P) -> Bool {
-  match self.peek() {
-    TKw("int") | TKw("char") | TKw("long") | TKw("void") | TKw("struct") => true
+fn ty_kw(t : Tok) -> Bool {
+  match t {
+    TKw("int")
+    | TKw("char")
+    | TKw("short")
+    | TKw("long")
+    | TKw("signed")
+    | TKw("unsigned")
+    | TKw("float")
+    | TKw("double")
+    | TKw("void")
+    | TKw("_Bool")
+    | TKw("bool")
+    | TKw("struct")
+    | TKw("union")
+    | TKw("const")
+    | TKw("volatile")
+    | TKw("restrict")
+    | TKw("_Atomic") => true
     _ => false
   }
 }
 
 ///|
+fn P::at_type(self : P) -> Bool {
+  ty_kw(self.peek())
+}
+
+///|
 fn P::parse_type(self : P) -> Ty {
-  let base = match self.peek() {
-    TKw("int") => {
-      self.pos = self.pos + 1
-      TInt
+  let mut uns = false
+  let mut n_long = 0
+  let mut n_short = 0
+  let mut base = TInt
+  let mut go = true
+  while go {
+    match self.peek() {
+      TKw("signed") => self.pos = self.pos + 1
+      TKw("unsigned") => {
+        self.pos = self.pos + 1
+        uns = true
+      }
+      TKw("short") => {
+        self.pos = self.pos + 1
+        n_short = n_short + 1
+      }
+      TKw("long") => {
+        self.pos = self.pos + 1
+        n_long = n_long + 1
+      }
+      TKw("int") => self.pos = self.pos + 1
+      TKw("char") => {
+        self.pos = self.pos + 1
+        base = TChar
+      }
+      TKw("float") => {
+        self.pos = self.pos + 1
+        base = TFloat
+      }
+      TKw("double") => {
+        self.pos = self.pos + 1
+        base = TDouble
+      }
+      TKw("void") => {
+        self.pos = self.pos + 1
+        base = TVoid
+      }
+      TKw("_Bool") | TKw("bool") => {
+        self.pos = self.pos + 1
+        base = TBool
+      }
+      TKw("struct") | TKw("union") => base = self.parse_struct_type()
+      TKw("const") | TKw("volatile") | TKw("restrict") | TKw("_Atomic") =>
+        self.pos = self.pos + 1
+      _ => go = false
     }
-    TKw("char") => {
-      self.pos = self.pos + 1
-      TChar
-    }
-    TKw("long") => {
-      self.pos = self.pos + 1
-      TLong
-    }
-    TKw("void") => {
-      self.pos = self.pos + 1
-      TVoid
-    }
-    TKw("struct") => self.parse_struct_type()
-    _ => abort("qpcc: expected type")
   }
-  let mut t = base
+  let t = match base {
+    TChar => if uns { TUChar } else { TChar }
+    TInt =>
+      if n_short > 0 {
+        if uns {
+          TUShort
+        } else {
+          TShort
+        }
+      } else if n_long == 1 {
+        if uns {
+          TULong
+        } else {
+          TLong
+        }
+      } else if n_long >= 2 {
+        if uns {
+          TULongLong
+        } else {
+          TLongLong
+        }
+      } else if uns {
+        TUInt
+      } else {
+        TInt
+      }
+    other => other
+  }
+  let mut tt = t
   while self.eat("*") {
-    t = TPtr(t)
+    tt = TPtr(tt)
+    let mut go2 = true
+    while go2 {
+      match self.peek() {
+        TKw("const") | TKw("volatile") | TKw("restrict") | TKw("_Atomic") =>
+          self.pos = self.pos + 1
+        _ => go2 = false
+      }
+    }
   }
-  t
+  tt
 }
 
 ///|
@@ -153,7 +237,12 @@ fn align_up(x : Int, a : Int) -> Int {
 
 ///|
 fn P::parse_struct_type(self : P) -> Ty {
-  self.expect_kw("struct")
+  let is_union = if self.eat_kw("union") {
+    true
+  } else {
+    self.expect_kw("struct")
+    false
+  }
   let tag = match self.eat_ident() {
     Some(n) => n
     None => abort("qpcc: expected struct tag")
@@ -162,6 +251,7 @@ fn P::parse_struct_type(self : P) -> Ty {
     let members : Array[(String, Ty, Int)] = []
     let mut off = 0
     let mut maxa = 1
+    let mut maxsz = 0
     while !self.eat("}") {
       let bty = self.parse_type()
       let mut more = true
@@ -172,9 +262,17 @@ fn P::parse_struct_type(self : P) -> Ty {
           maxa = a
         }
         let sz = size_of(mty, self.structs)
-        off = align_up(off, a)
-        members.push((mname, mty, off))
-        off = off + sz
+        if sz > maxsz {
+          maxsz = sz
+        }
+        let moff = if is_union {
+          0
+        } else {
+          let o = align_up(off, a)
+          off = o + sz
+          o
+        }
+        members.push((mname, mty, moff))
         if self.eat(",") {
           continue
         }
@@ -182,9 +280,19 @@ fn P::parse_struct_type(self : P) -> Ty {
       }
       self.expect(";")
     }
-    let size = align_up(off, maxa)
+    let size = if is_union {
+      align_up(maxsz, maxa)
+    } else {
+      align_up(off, maxa)
+    }
     let idx = self.structs.length()
-    self.structs.push(StructDef::{ name: tag, members, size, align: maxa, })
+    self.structs.push(StructDef::{
+      name: tag,
+      members,
+      size,
+      align: maxa,
+      is_union,
+    })
     self.struct_tys.set(tag, idx)
     TStruct(idx)
   } else {
@@ -197,6 +305,7 @@ fn P::parse_struct_type(self : P) -> Ty {
           members: [],
           size: 0,
           align: 1,
+          is_union,
         })
         self.struct_tys.set(tag, idx)
         TStruct(idx)
@@ -333,11 +442,18 @@ fn P::mk_bin(self : P, op : String, l : Expr, r : Expr) -> Expr {
   let rt = decay(r.ty)
   let ty = if cmp {
     TInt
+  } else if is_float(lt) || is_float(rt) {
+    if lt == TDouble || rt == TDouble {
+      TDouble
+    } else {
+      TFloat
+    }
   } else {
     match (lt, rt) {
       (TPtr(e), _) => if op == "+" || op == "-" { TPtr(e) } else { TLong }
       (_, TPtr(_)) => TLong
-      (TLong, _) | (_, TLong) => TLong
+      (TLong | TULong, _) | (_, TLong | TULong) => TLong
+      (TLongLong | TULongLong, _) | (_, TLongLong | TULongLong) => TLongLong
       _ => TInt
     }
   }
@@ -364,6 +480,16 @@ fn P::parse_binary(self : P, min_prec : Int) -> Expr {
 ///|
 fn P::parse_unary(self : P) -> Expr {
   match self.peek() {
+    TPunct("(") =>
+      if ty_kw(self.peek2()) {
+        self.pos = self.pos + 1
+        let ty = self.parse_type()
+        self.expect(")")
+        let e = self.parse_unary()
+        mk(ECast(e), ty)
+      } else {
+        self.parse_postfix()
+      }
     TPunct("-") => {
       self.pos = self.pos + 1
       let e = self.parse_unary()
@@ -494,6 +620,10 @@ fn P::parse_postfix(self : P) -> Expr {
 fn P::parse_primary(self : P) -> Expr {
   match self.adv() {
     TNum(n) => mk(ENum(n), TInt)
+    TFlt(v, is_f) => mk(EFlt(v, is_f), if is_f { TFloat } else { TDouble })
+    TKw("true") => mk(ENum(1), TBool)
+    TKw("false") => mk(ENum(0), TBool)
+    TKw("nullptr") => mk(ENum(0), TPtr(TVoid))
     TStr(s) => {
       let id = self.strings.length()
       self.strings.push(s)
