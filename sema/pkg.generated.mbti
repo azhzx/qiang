@@ -34,6 +34,8 @@ pub fn declspec_to_type(@front.DeclSpec, Ctx) -> CType
 
 pub fn decode_string(String) -> String
 
+pub fn encode_global_init(@front.Initializer, CType, Int, Array[Byte], Array[(Int, GlobalReloc)], Ctx) -> Unit
+
 pub fn func_params(@front.Declarator) -> Array[@front.ParamDecl]
 
 pub fn int_literal_type(String) -> CType
@@ -102,6 +104,8 @@ pub struct CheckedGlobal {
   name : String
   ty : CType
   init : Int64?
+  bytes : Array[Byte]
+  relocs : Array[(Int, GlobalReloc)]
 }
 
 pub struct CheckedProgram {
@@ -151,6 +155,11 @@ pub struct Field {
   offset : Int
   bit_width : Int
   bit_offset : Int
+}
+
+pub(all) enum GlobalReloc {
+  RGlobal(String, Int)
+  RString(Int, Int)
 }
 
 pub struct Layout {
@@ -224,6 +233,7 @@ pub(all) enum TExprKind {
   TCond(TExpr, TExpr, TExpr)
   TCast(TExpr)
   TMember(TExpr, Int)
+  TBitField(TExpr, Int, Int, Int)
   TIndex(TExpr, TExpr)
   TComma(TExpr, TExpr)
   TAddr(TExpr)

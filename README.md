@@ -40,19 +40,27 @@ convenience.
 - Expressions, statements, `switch`, `goto`, statement expressions, compound
   literals, `__builtin_offsetof`, `__builtin_types_compatible_p`, designated
   initializers.
+- Variadic function definitions (`va_start`/`va_arg`/`va_end`/`va_copy`).
+- Bitfield reads and read-modify-write updates.
+- Global aggregate, string, designated and address-constant initializers.
+- Computed goto (`goto *p`) and arrays of label addresses (`&&label`).
+- Sequentially consistent atomics: atomic load/store (`ldar`/`stlr`) and fences
+  (`dmb ish`).
 - Code generation for Mach-O arm64 through `ir_builder`.
 
 ## Limitations
 
 - The preprocessor is external (`clang -E`); preprocessor tests are out of scope.
-- Computed goto (`goto *p`) and static label-address arrays are not lowered.
-- `_Complex` arithmetic, full atomic memory ordering and some aggregate
-  initializer edge cases are incomplete.
+- Atomics currently cover sequentially consistent load/store and fences; the
+  read-modify-write forms (exchange, compare-exchange, fetch-add, ...) still need
+  LL/SC or LSE lowering.
+- `_Complex` arithmetic and some aggregate initializer edge cases are
+  incomplete.
 - Diagnostics carry statement-level positions.
 
 ## Testing
 
-- `sh qpcc/test.sh` — clang oracle over `qpcc/tests/*.c` (52 fixtures).
+- `sh qpcc/test.sh` — clang oracle over `qpcc/tests/*.c` (57 fixtures).
 - `moon test --target native qpcc/front qpcc/sema` — front-end and sema tests.
 - `qpcc/chibicc-tests/` — a vendored chibicc subset used for parsing and
   end-to-end checks.
