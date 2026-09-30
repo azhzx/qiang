@@ -60,10 +60,18 @@ pub struct TStmt {
 }
 
 ///|
+pub(all) enum GlobalReloc {
+  RGlobal(String, Int)
+  RString(Int, Int)
+}
+
+///|
 pub struct CheckedGlobal {
   name : String
   ty : CType
   init : Int64?
+  bytes : Array[Byte]
+  relocs : Array[(Int, GlobalReloc)]
 }
 
 ///|

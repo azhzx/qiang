@@ -332,9 +332,16 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
                   }
                 _ => None
               }
+              let bytes : Array[Byte] = []
+              let relocs : Array[(Int, GlobalReloc)] = []
+              match idecl.init {
+                Some(i) => encode_global_init(i, ty, 0, bytes, relocs, ctx)
+                None => ()
+              }
+              let has_init = idecl.init is Some(_)
               let is_extern = storage_of(spec) is StExtern
-              if !(is_extern && init is None) {
-                ctx.globals.push({ name: n, ty, init, })
+              if !(is_extern && !has_init) {
+                ctx.globals.push({ name: n, ty, init, bytes, relocs, })
               }
             }
           None => ()

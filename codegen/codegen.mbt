@@ -1486,11 +1486,60 @@ pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
     strs.push(label)
   }
   for g in p.globals {
-    let v = match g.init {
-      Some(x) => x
-      None => 0L
+    let sz = size_of(g.ty, p.layouts)
+    if g.relocs.length() > 0 {
+      b.data_begin(g.name, false)
+      let mut pos = 0
+      for entry in g.relocs {
+        let (off, r) = entry
+        while pos < off {
+          b.data_byte(
+            if pos < g.bytes.length() {
+              g.bytes[pos].to_int().to_int64()
+            } else {
+              0L
+            },
+          )
+          pos = pos + 1
+        }
+        match r {
+          @sema.RGlobal(t, k) => b.data_ref_item(t, k.to_int64())
+          @sema.RString(idx, k) =>
+            b.data_ref_item("qpcc_str_" + idx.to_string(), k.to_int64())
+        }
+        pos = pos + 8
+      }
+      let total = if g.bytes.length() > 0 { g.bytes.length() } else { sz }
+      while pos < total {
+        b.data_byte(
+          if pos < g.bytes.length() {
+            g.bytes[pos].to_int().to_int64()
+          } else {
+            0L
+          },
+        )
+        pos = pos + 1
+      }
+      b.data_end()
+    } else if g.bytes.length() > 0 {
+      b.data_bytes(g.name, false, Bytes::from_array(g.bytes[:]))
+    } else {
+      let v = match g.init {
+        Some(x) => x
+        None => 0L
+      }
+      if is_composite(g.ty) {
+        let arr : Array[Byte] = []
+        let mut i = 0
+        while i < sz {
+          arr.push((0).to_byte())
+          i = i + 1
+        }
+        b.data_bytes(g.name, false, Bytes::from_array(arr[:]))
+      } else {
+        b.data_bytes(g.name, false, le_bytes(v))
+      }
     }
-    b.data_bytes(g.name, false, le_bytes(v))
   }
   let c = Cg::{
     b,
