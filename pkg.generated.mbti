@@ -1,0 +1,44 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "azhzx/qbe/qpcc"
+
+import {
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn compile_il(String) -> String raise
+
+pub fn compile_object(String) -> Bytes raise
+
+pub fn parse(String) -> Program
+
+pub fn tokenize(String) -> Array[Token]
+
+// Errors
+
+// Types and methods
+pub struct FuncDef {
+  name : String
+  value : Int64
+}
+
+pub struct Program {
+  funcs : Array[FuncDef]
+}
+
+pub(all) enum Token {
+  TInt
+  TReturn
+  TIdent(String)
+  TNumber(Int64)
+  TLParen
+  TRParen
+  TLBrace
+  TRBrace
+  TSemicolon
+  TEof
+} derive(Eq, @debug.Debug)
+
+// Type aliases
+
+// Traits
