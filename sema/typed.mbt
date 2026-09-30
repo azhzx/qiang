@@ -13,6 +13,7 @@ pub(all) enum TExprKind {
   TCond(TExpr, TExpr, TExpr)
   TCast(TExpr)
   TMember(TExpr, Int)
+  TBitField(TExpr, Int, Int, Int)
   TIndex(TExpr, TExpr)
   TComma(TExpr, TExpr)
   TAddr(TExpr)

@@ -301,6 +301,44 @@ fn is_cmp(op : String) -> Bool {
 }
 
 ///|
+fn Cg::bitfield_addr(c : Cg, base : @sema.TExpr, off : Int) -> Int {
+  let a = c.gen_addr(base)
+  if off == 0 {
+    a
+  } else {
+    c.b.arith(
+      c.fid,
+      @types.Add,
+      @types.Kl,
+      a,
+      c.b.iconst(c.fid, off.to_int64()),
+    )
+  }
+}
+
+///|
+fn Cg::bitfield_read(
+  c : Cg,
+  ty : @sema.CType,
+  addr : Int,
+  bo : Int,
+  bw : Int,
+) -> Int {
+  let raw = c.load_scalar(ty, addr)
+  let cls = cls_of(ty)
+  let bits = size_of(ty, c.layouts) * 8
+  let shl = c.b.arith(
+    c.fid,
+    @types.Shl,
+    cls,
+    raw,
+    c.b.iconst(c.fid, (bits - bo - bw).to_int64()),
+  )
+  let sr = if is_uns(ty) { @types.Shr } else { @types.Sar }
+  c.b.arith(c.fid, sr, cls, shl, c.b.iconst(c.fid, (bits - bw).to_int64()))
+}
+
+///|
 fn Cg::gen_addr(c : Cg, e : @sema.TExpr) -> Int {
   match e.kind {
     @sema.TVar(n) =>
@@ -404,6 +442,10 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
         c.load_scalar(e.ty, a)
       }
     }
+    @sema.TBitField(base, off, bo, bw) => {
+      let addr = c.bitfield_addr(base, off)
+      c.bitfield_read(e.ty, addr, bo, bw)
+    }
     @sema.TMember(_, _) => {
       let a = c.gen_addr(e)
       if is_aggregate(e.ty) {
@@ -412,22 +454,57 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
         c.load_scalar(e.ty, a)
       }
     }
-    @sema.TAssign(l, r) => {
-      let a = c.gen_addr(l)
-      if is_composite(l.ty) {
-        let src = c.gen_expr(r)
-        let sz = size_of(l.ty, c.layouts)
-        if sz > 0 {
-          c.emit_memcpy(a, src, sz)
+    @sema.TAssign(l, r) =>
+      match l.kind {
+        @sema.TBitField(base, off, bo, bw) => {
+          let addr = c.bitfield_addr(base, off)
+          let old = c.load_scalar(l.ty, addr)
+          let fmask = (1L << bw) - 1L
+          let nmask = -1L ^ (fmask << bo)
+          let cleared = c.b.arith(
+            c.fid,
+            @types.And,
+            cls_of(l.ty),
+            old,
+            c.b.iconst(c.fid, nmask),
+          )
+          let rv = c.gen_expr(r)
+          let rc = c.convert(rv, r.ty, l.ty)
+          let masked = c.b.arith(
+            c.fid,
+            @types.And,
+            cls_of(l.ty),
+            rc,
+            c.b.iconst(c.fid, fmask),
+          )
+          let placed = c.b.arith(
+            c.fid,
+            @types.Shl,
+            cls_of(l.ty),
+            masked,
+            c.b.iconst(c.fid, bo.to_int64()),
+          )
+          let nv = c.b.arith(c.fid, @types.Or, cls_of(l.ty), cleared, placed)
+          c.store_scalar(l.ty, nv, addr)
+          c.bitfield_read(l.ty, addr, bo, bw)
         }
-        a
-      } else {
-        let v = c.gen_expr(r)
-        let vv = c.convert(v, r.ty, l.ty)
-        c.store_scalar(l.ty, vv, a)
-        vv
+        _ => {
+          let a = c.gen_addr(l)
+          if is_composite(l.ty) {
+            let src = c.gen_expr(r)
+            let sz = size_of(l.ty, c.layouts)
+            if sz > 0 {
+              c.emit_memcpy(a, src, sz)
+            }
+            a
+          } else {
+            let v = c.gen_expr(r)
+            let vv = c.convert(v, r.ty, l.ty)
+            c.store_scalar(l.ty, vv, a)
+            vv
+          }
+        }
       }
-    }
     @sema.TComma(a, b) => {
       let _ = c.gen_expr(a)
       c.gen_expr(b)
@@ -435,6 +512,24 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
     @sema.TBin(op, l, r) => c.gen_bin(op, l, r)
     @sema.TUn(op, x) => c.gen_un(op, x)
     @sema.TCall(name, callee, args) => {
+      if name == "__builtin_va_start" {
+        if args.length() > 0 {
+          let ap = c.gen_addr(args[0])
+          c.b.vastart(c.fid, ap)
+        }
+        return c.b.iconst(c.fid, 0L)
+      }
+      if name == "__builtin_va_end" {
+        return c.b.iconst(c.fid, 0L)
+      }
+      if name == "__builtin_va_copy" {
+        if args.length() >= 2 {
+          let d = c.gen_addr(args[0])
+          let src = c.gen_addr(args[1])
+          c.emit_memcpy(d, src, 8)
+        }
+        return c.b.iconst(c.fid, 0L)
+      }
       let rty = match callee.ty {
         @sema.CFunc(r, _, _) => r
         @sema.CPtr(@sema.CFunc(r, _, _)) => r
@@ -587,7 +682,10 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
         c.load_scalar(e.ty, a)
       }
     }
-    @sema.TVaArg(_) => c.b.iconst(c.fid, 0L)
+    @sema.TVaArg(x) => {
+      let ap = c.gen_addr(x)
+      c.b.vaarg(c.fid, cls_of(e.ty), ap)
+    }
     @sema.TCast(x) => {
       let v = c.gen_expr(x)
       c.convert(v, x.ty, e.ty)

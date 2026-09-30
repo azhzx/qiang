@@ -212,7 +212,16 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
       match sty {
         CStruct(i) | CUnion(i) =>
           match field_of(ctx.layouts[i], name) {
-            Some(f) => mk_expr(TMember(tb, f.offset), f.ty, arrow || tb.lvalue)
+            Some(f) =>
+              if f.bit_width > 0 {
+                mk_expr(
+                  TBitField(tb, f.offset, f.bit_offset, f.bit_width),
+                  f.ty,
+                  true,
+                )
+              } else {
+                mk_expr(TMember(tb, f.offset), f.ty, arrow || tb.lvalue)
+              }
             None => {
               ctx.diags.error("no member named " + name)
               err_expr(ctx)
