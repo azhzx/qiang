@@ -1,0 +1,151 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "azhzx/qbe/qpcc/sema"
+
+import {
+  "azhzx/qbe/qpcc/front",
+}
+
+// Values
+pub fn align_of_ty(CType, Array[Layout]) -> Int
+
+pub fn align_up(Int, Int) -> Int
+
+pub fn build_type(@front.Declarator, CType, Ctx) -> CType
+
+pub fn check(@front.TranslationUnit) -> CheckedProgram
+
+pub fn const_eval_int(@front.Expr, Ctx) -> Int64
+
+pub fn decay(CType) -> CType
+
+pub fn decl_name(@front.Declarator) -> String?
+
+pub fn declspec_to_type(@front.DeclSpec, Ctx) -> CType
+
+pub fn is_arith(CType) -> Bool
+
+pub fn is_float(CType) -> Bool
+
+pub fn is_integer(CType) -> Bool
+
+pub fn is_ptr(CType) -> Bool
+
+pub fn is_scalar(CType) -> Bool
+
+pub fn is_signed(CType) -> Bool
+
+pub fn parse_char_lit(String) -> Int64
+
+pub fn parse_int_lit(String) -> Int64
+
+pub fn size_of_ty(CType, Array[Layout]) -> Int
+
+// Errors
+
+// Types and methods
+pub(all) enum CType {
+  CVoid
+  CBool
+  CChar(Bool)
+  CShort(Bool)
+  CInt(Bool)
+  CLong(Bool)
+  CLongLong(Bool)
+  CFloat
+  CDouble
+  CPtr(CType)
+  CArray(CType, Int)
+  CFunc(CType, Array[CType], Bool)
+  CStruct(Int)
+  CUnion(Int)
+  CEnum(Int)
+  CBitInt(Int)
+} derive(Eq)
+
+pub struct CheckedProgram {
+  layouts : Array[Layout]
+  diags : Array[Diag]
+}
+
+pub struct Ctx {
+  scopes : ScopeStack
+  layouts : Array[Layout]
+  diags : Diags
+}
+
+pub struct Diag {
+  sev : Severity
+  msg : String
+}
+
+pub struct Diags {
+  items : Array[Diag]
+}
+pub fn Diags::error(Self, String) -> Unit
+pub fn Diags::has_error(Self) -> Bool
+pub fn Diags::new() -> Self
+pub fn Diags::warning(Self, String) -> Unit
+
+pub struct Field {
+  name : String
+  ty : CType
+  offset : Int
+  bit_width : Int
+  bit_offset : Int
+}
+
+pub struct Layout {
+  name : String
+  is_union : Bool
+  fields : Array[Field]
+  size : Int
+  align : Int
+  enum_vals : Array[(String, Int64)]
+}
+
+pub struct ScopeStack {
+  scopes : Array[Map[String, Symbol]]
+  tags : Array[Map[String, Int]]
+}
+pub fn ScopeStack::define(Self, Symbol) -> Unit
+pub fn ScopeStack::define_tag(Self, String, Int) -> Unit
+pub fn ScopeStack::lookup(Self, String) -> Symbol?
+pub fn ScopeStack::lookup_tag(Self, String) -> Int?
+pub fn ScopeStack::new() -> Self
+pub fn ScopeStack::pop(Self) -> Unit
+pub fn ScopeStack::push(Self) -> Unit
+
+pub(all) enum Severity {
+  SevError
+  SevWarning
+}
+
+pub(all) enum Storage {
+  StNone
+  StStatic
+  StExtern
+  StTypedef
+  StAuto
+  StRegister
+  StThread
+}
+
+pub(all) enum SymKind {
+  SymVar
+  SymFunc
+  SymTypedef
+  SymEnumConst
+  SymLabel
+}
+
+pub struct Symbol {
+  name : String
+  kind : SymKind
+  ty : CType
+  storage : Storage
+  value : Int64
+}
+
+// Type aliases
+
+// Traits

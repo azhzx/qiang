@@ -1,0 +1,245 @@
+///|
+/// Resolve a declarator tree against a base type.
+pub fn build_type(d : @front.Declarator, base : CType, ctx : Ctx) -> CType {
+  match d {
+    @front.DName(_) | @front.DAbstract => base
+    @front.DPointer(_, inner) => build_type(inner, CPtr(base), ctx)
+    @front.DArray(inner, size, _) => {
+      let n = match size {
+        Some(e) => const_eval_int(e, ctx).to_int()
+        None => 0
+      }
+      build_type(inner, CArray(base, n), ctx)
+    }
+    @front.DFunction(inner, params, va) => {
+      let ps : Array[CType] = []
+      for p in params {
+        let pb = declspec_to_type(p.spec, ctx)
+        ps.push(build_type(p.decl, pb, ctx))
+      }
+      build_type(inner, CFunc(base, ps, va), ctx)
+    }
+  }
+}
+
+///|
+pub fn decl_name(d : @front.Declarator) -> String? {
+  match d {
+    @front.DName(n) => Some(n)
+    @front.DPointer(_, inner) => decl_name(inner)
+    @front.DArray(inner, _, _) => decl_name(inner)
+    @front.DFunction(inner, _, _) => decl_name(inner)
+    @front.DAbstract => None
+  }
+}
+
+///|
+pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
+  let mut uns = false
+  let mut n_long = 0
+  let mut n_short = 0
+  let mut base : CType? = None
+  for ts in spec.type_specs {
+    match ts {
+      @front.TKw(k) =>
+        match k {
+          "unsigned" => uns = true
+          "signed" => ()
+          "short" => n_short = n_short + 1
+          "long" => n_long = n_long + 1
+          "int" => if base is None { base = Some(CInt(false)) }
+          "char" => base = Some(CChar(true))
+          "void" => base = Some(CVoid)
+          "float" => base = Some(CFloat)
+          "double" => base = Some(CDouble)
+          "_Bool" | "bool" => base = Some(CBool)
+          "_Complex" | "_Imaginary" =>
+            ctx.diags.error("complex types are not supported")
+          "__int128" => base = Some(CBitInt(128))
+          "__auto_type" => ctx.diags.error("__auto_type is not supported")
+          _ => ()
+        }
+      @front.TStruct(tag, body) =>
+        base = Some(CStruct(resolve_aggregate(ctx, tag, body, false)))
+      @front.TUnion(tag, body) =>
+        base = Some(CUnion(resolve_aggregate(ctx, tag, body, true)))
+      @front.TEnum(tag, items) =>
+        base = Some(CEnum(define_enum(ctx, tag, items)))
+      @front.TTypedefName(n) =>
+        match ctx.scopes.lookup(n) {
+          Some(s) => base = Some(s.ty)
+          None => ctx.diags.error("unknown type name: " + n)
+        }
+      @front.TTypeofType(s2, d2) => {
+        let b = declspec_to_type(s2, ctx)
+        base = Some(build_type(d2, b, ctx))
+      }
+      @front.TTypeofExpr(_) =>
+        ctx.diags.error("typeof(expr) is not supported yet")
+      @front.TAtomicSpec(s2, d2) => {
+        let b = declspec_to_type(s2, ctx)
+        base = Some(build_type(d2, b, ctx))
+      }
+      @front.TBitInt(e) => base = Some(CBitInt(const_eval_int(e, ctx).to_int()))
+    }
+  }
+  let b = match base {
+    Some(t) => t
+    None => CInt(false)
+  }
+  match b {
+    CChar(_) => CChar(!uns)
+    CShort(_) => CShort(!uns)
+    CInt(_) =>
+      if n_short > 0 {
+        CShort(!uns)
+      } else if n_long == 1 {
+        CLong(!uns)
+      } else if n_long >= 2 {
+        CLongLong(!uns)
+      } else {
+        CInt(!uns)
+      }
+    other => other
+  }
+}
+
+///|
+/// Resolve a struct/union type: reuse an existing tag when there is no body,
+/// otherwise define a new layout.
+fn resolve_aggregate(
+  ctx : Ctx,
+  tag : String?,
+  body : Array[@front.StructDecl],
+  is_union : Bool,
+) -> Int {
+  if body.length() == 0 {
+    match tag {
+      Some(t) =>
+        match ctx.scopes.lookup_tag(t) {
+          Some(i) => return i
+          None => ()
+        }
+      None => ()
+    }
+  }
+  define_aggregate(ctx, tag, body, is_union)
+}
+
+///|
+fn define_aggregate(
+  ctx : Ctx,
+  tag : String?,
+  body : Array[@front.StructDecl],
+  is_union : Bool,
+) -> Int {
+  let fields : Array[Field] = []
+  let mut off = 0
+  let mut maxa = 1
+  let mut maxsz = 0
+  for sd in body {
+    match sd {
+      @front.SDecl(spec, decls) =>
+        for idecl in decls {
+          let b = declspec_to_type(spec, ctx)
+          let ty = build_type(idecl.decl, b, ctx)
+          let name = match decl_name(idecl.decl) {
+            Some(n) => n
+            None => ""
+          }
+          let a = align_of_ty(ty, ctx.layouts)
+          let sz = size_of_ty(ty, ctx.layouts)
+          if a > maxa {
+            maxa = a
+          }
+          if sz > maxsz {
+            maxsz = sz
+          }
+          let fo = if is_union {
+            0
+          } else {
+            let o = align_up(off, a)
+            off = o + sz
+            o
+          }
+          fields.push({ name, ty, offset: fo, bit_width: 0, bit_offset: 0, })
+        }
+      @front.SAnon(spec) => {
+        let ty = declspec_to_type(spec, ctx)
+        let a = align_of_ty(ty, ctx.layouts)
+        let sz = size_of_ty(ty, ctx.layouts)
+        if a > maxa {
+          maxa = a
+        }
+        if sz > maxsz {
+          maxsz = sz
+        }
+        let fo = if is_union {
+          0
+        } else {
+          let o = align_up(off, a)
+          off = o + sz
+          o
+        }
+        fields.push({ name: "", ty, offset: fo, bit_width: 0, bit_offset: 0, })
+      }
+      _ => ()
+    }
+  }
+  let size = if is_union { align_up(maxsz, maxa) } else { align_up(off, maxa) }
+  let idx = ctx.layouts.length()
+  ctx.layouts.push({
+    name: match tag {
+      Some(t) => t
+      None => ""
+    },
+    is_union,
+    fields,
+    size,
+    align: maxa,
+    enum_vals: [],
+  })
+  match tag {
+    Some(t) => ctx.scopes.define_tag(t, idx)
+    None => ()
+  }
+  idx
+}
+
+///|
+fn define_enum(ctx : Ctx, tag : String?, items : Array[@front.EnumItem]) -> Int {
+  let vals : Array[(String, Int64)] = []
+  let mut next : Int64 = 0L
+  for it in items {
+    let v = match it.value {
+      Some(e) => const_eval_int(e, ctx)
+      None => next
+    }
+    vals.push((it.name, v))
+    ctx.scopes.define({
+      name: it.name,
+      kind: SymEnumConst,
+      ty: CInt(false),
+      storage: StNone,
+      value: v,
+    })
+    next = v + 1L
+  }
+  let idx = ctx.layouts.length()
+  ctx.layouts.push({
+    name: match tag {
+      Some(t) => t
+      None => ""
+    },
+    is_union: false,
+    fields: [],
+    size: 4,
+    align: 4,
+    enum_vals: vals,
+  })
+  match tag {
+    Some(t) => ctx.scopes.define_tag(t, idx)
+    None => ()
+  }
+  idx
+}
