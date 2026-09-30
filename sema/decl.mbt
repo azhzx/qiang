@@ -56,6 +56,8 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
           "_Complex" | "_Imaginary" =>
             ctx.diags.error("complex types are not supported")
           "__int128" => base = Some(CBitInt(128))
+          "__builtin_va_list" | "__builtin_ms_va_list" =>
+            base = Some(CPtr(CVoid))
           "__auto_type" => ctx.diags.error("__auto_type is not supported")
           _ => ()
         }
@@ -74,8 +76,7 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
         let b = declspec_to_type(s2, ctx)
         base = Some(build_type(d2, b, ctx))
       }
-      @front.TTypeofExpr(_) =>
-        ctx.diags.error("typeof(expr) is not supported yet")
+      @front.TTypeofExpr(e) => base = Some(check_expr(e, ctx).ty)
       @front.TAtomicSpec(s2, d2) => {
         let b = declspec_to_type(s2, ctx)
         base = Some(build_type(d2, b, ctx))
@@ -137,6 +138,8 @@ fn define_aggregate(
   let mut off = 0
   let mut maxa = 1
   let mut maxsz = 0
+  let mut bit_pos = 0
+  let mut unit_off = 0
   for sd in body {
     match sd {
       @front.SDecl(spec, decls) =>
@@ -155,14 +158,39 @@ fn define_aggregate(
           if sz > maxsz {
             maxsz = sz
           }
-          let fo = if is_union {
-            0
-          } else {
-            let o = align_up(off, a)
-            off = o + sz
-            o
+          let w = match idecl.bits {
+            Some(e) => const_eval_int(e, ctx).to_int()
+            None => 0
           }
-          fields.push({ name, ty, offset: fo, bit_width: 0, bit_offset: 0, })
+          if w > 0 && !is_union {
+            let unit_bits = sz * 8
+            if bit_pos == 0 {
+              unit_off = align_up(off, a)
+            }
+            if bit_pos + w > unit_bits {
+              unit_off = align_up(unit_off + (bit_pos + 7) / 8, a)
+              bit_pos = 0
+            }
+            fields.push({
+              name,
+              ty,
+              offset: unit_off,
+              bit_width: w,
+              bit_offset: bit_pos,
+            })
+            bit_pos = bit_pos + w
+            off = unit_off + (bit_pos + 7) / 8
+          } else {
+            bit_pos = 0
+            let fo = if is_union {
+              0
+            } else {
+              let o = align_up(off, a)
+              off = o + sz
+              o
+            }
+            fields.push({ name, ty, offset: fo, bit_width: 0, bit_offset: 0, })
+          }
         }
       @front.SAnon(spec) => {
         let ty = declspec_to_type(spec, ctx)

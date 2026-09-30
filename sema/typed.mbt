@@ -42,6 +42,7 @@ pub(all) enum TStmtKind {
   KSLabel(String)
   KSGoto(String)
   KSDecl(String, CType, TExpr?)
+  KSAggInit(String, CType, Array[(Int, TExpr)])
   KSEmpty
 }
 

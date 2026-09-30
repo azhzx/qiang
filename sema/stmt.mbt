@@ -44,15 +44,21 @@ fn check_local_decl(
             value: 0L,
           })
         } else {
-          let init = match idecl.init {
-            Some(@front.IExpr(e)) => Some(check_expr(e, ctx))
-            Some(_) => {
-              ctx.diags.error("aggregate initializers are not supported yet")
-              None
+          match idecl.init {
+            Some(@front.IExpr(e)) => {
+              let te = check_expr(e, ctx)
+              out.push({ kind: KSDecl(n, ty, Some(te)), })
             }
-            None => None
+            Some(@front.IList(_)) => {
+              let stores : Array[(Int, TExpr)] = []
+              match idecl.init {
+                Some(init) => check_init_into(init, ty, 0, stores, ctx)
+                None => ()
+              }
+              out.push({ kind: KSAggInit(n, ty, stores), })
+            }
+            None => out.push({ kind: KSDecl(n, ty, None), })
           }
-          out.push({ kind: KSDecl(n, ty, init), })
           ctx.scopes.define({
             name: n,
             kind: SymVar,
@@ -63,6 +69,79 @@ fn check_local_decl(
         }
       None => ()
     }
+  }
+}
+
+///|
+fn check_init_into(
+  init : @front.Initializer,
+  ty : CType,
+  base_off : Int,
+  stores : Array[(Int, TExpr)],
+  ctx : Ctx,
+) -> Unit {
+  match init {
+    @front.IExpr(e) => {
+      let te = check_expr(e, ctx)
+      stores.push((base_off, te))
+    }
+    @front.IList(items) =>
+      match ty {
+        CArray(elem, _) => {
+          let stride = size_of_ty(elem, ctx.layouts)
+          let mut idx = 0
+          for it in items {
+            let off = if it.designators.length() > 0 {
+              match it.designators[0] {
+                @front.DIndex(e) => const_eval_int(e, ctx).to_int() * stride
+                _ => idx * stride
+              }
+            } else {
+              idx * stride
+            }
+            check_init_into(it.init, elem, base_off + off, stores, ctx)
+            idx = idx + 1
+          }
+        }
+        CStruct(i) => {
+          let lay = ctx.layouts[i]
+          let mut midx = 0
+          for it in items {
+            let (moff, mty) = if it.designators.length() > 0 {
+              match it.designators[0] {
+                @front.DField(n) =>
+                  match field_of(lay, n) {
+                    Some(f) => (f.offset, f.ty)
+                    None => (0, CInt(false))
+                  }
+                _ => (0, CInt(false))
+              }
+            } else if midx < lay.fields.length() {
+              (lay.fields[midx].offset, lay.fields[midx].ty)
+            } else {
+              (0, CInt(false))
+            }
+            check_init_into(it.init, mty, base_off + moff, stores, ctx)
+            midx = midx + 1
+          }
+        }
+        CUnion(i) => {
+          let lay = ctx.layouts[i]
+          if items.length() > 0 && lay.fields.length() > 0 {
+            check_init_into(
+              items[0].init,
+              lay.fields[0].ty,
+              base_off + lay.fields[0].offset,
+              stores,
+              ctx,
+            )
+          }
+        }
+        _ =>
+          if items.length() > 0 {
+            check_init_into(items[0].init, ty, base_off, stores, ctx)
+          }
+      }
   }
 }
 

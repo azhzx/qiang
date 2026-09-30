@@ -298,6 +298,16 @@ pub fn check(tu : @front.TranslationUnit) -> CheckedProgram {
     strings: [],
     funcs: [],
   }
+  let va_list_ty = CPtr(CChar(true))
+  for b in ["va_start", "va_end", "va_copy", "va_arg"] {
+    ctx.scopes.define({
+      name: b,
+      kind: SymFunc,
+      ty: CFunc(CVoid, [va_list_ty, va_list_ty], true),
+      storage: StNone,
+      value: 0L,
+    })
+  }
   for d in tu.decls {
     check_external(d, ctx)
   }
