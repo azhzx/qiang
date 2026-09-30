@@ -1,6 +1,6 @@
 #!/bin/sh
-# QPCC end-to-end: .c -> QBE builder -> Mach-O arm64 object -> clang -> run,
-# then compare the exit code (and putchar output).
+# QPCC oracle: for every fixture compile with clang and with qpcc, link both,
+# run them, and compare exit codes and stdout.
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -12,42 +12,33 @@ trap 'rm -rf "$tmp"' EXIT
 cd "$root"
 moon build --target native qpcc/cmd >/dev/null
 
-check() {
-  c="$1"; want="$2"
+pass=0
+fail=0
+for c in "$here"/tests/*.c; do
   base=$(basename "$c" .c)
-  "$exe" "$c" -o "$tmp/$base.o"
-  clang "$tmp/$base.o" -o "$tmp/$base"
+  clang "$c" -o "$tmp/$base.ref"
   set +e
-  "$tmp/$base" >"$tmp/$base.out" 2>/dev/null
-  got=$?
+  "$tmp/$base.ref" >"$tmp/$base.ref.out" 2>&1
+  refcode=$?
   set -e
-  if [ "$got" -ne "$want" ]; then
-    echo "FAIL $base: expected $want, got $got"
-    exit 1
+  if ! "$exe" "$c" -o "$tmp/$base.o" 2>"$tmp/$base.err"; then
+    echo "FAIL $base (qpcc compile)"
+    fail=$((fail + 1))
+    continue
   fi
-  echo "ok   $base (exit $got)"
-}
+  clang "$tmp/$base.o" -o "$tmp/$base.qpcc"
+  set +e
+  "$tmp/$base.qpcc" >"$tmp/$base.qpcc.out" 2>&1
+  gotcode=$?
+  set -e
+  if [ "$refcode" -ne "$gotcode" ] || ! cmp -s "$tmp/$base.ref.out" "$tmp/$base.qpcc.out"; then
+    echo "FAIL $base: clang exit $refcode vs qpcc exit $gotcode"
+    fail=$((fail + 1))
+  else
+    echo "ok   $base (exit $gotcode)"
+    pass=$((pass + 1))
+  fi
+done
 
-check "$here/tests/m0_return42.c" 42
-check "$here/tests/arith.c" 9
-check "$here/tests/if.c" 1
-check "$here/tests/while.c" 10
-check "$here/tests/for.c" 10
-check "$here/tests/fib.c" 55
-check "$here/tests/ptr.c" 7
-check "$here/tests/arr.c" 6
-check "$here/tests/str.c" 104
-check "$here/tests/sizeof.c" 13
-check "$here/tests/global.c" 7
-check "$here/tests/logic.c" 1
-check "$here/tests/cond.c" 10
-
-"$exe" "$here/tests/putchar.c" -o "$tmp/putchar.o"
-clang "$tmp/putchar.o" -o "$tmp/putchar"
-out=$("$tmp/putchar")
-if [ "$out" != "AB" ]; then
-  echo "FAIL putchar: got '$out'"
-  exit 1
-fi
-echo "ok   putchar (output AB)"
-echo "qpcc tests passed"
+echo "qpcc oracle: $pass passed, $fail failed"
+[ "$fail" -eq 0 ]

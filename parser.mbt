@@ -8,6 +8,7 @@ priv struct P {
   funcs : Map[String, (Ty, Array[Ty])]
   strings : Array[String]
   structs : Array[StructDef]
+  struct_tys : Map[String, Int]
   funcs_list : Array[FuncDef]
   globals_list : Array[GlobalDef]
 }
@@ -83,7 +84,7 @@ fn P::eat_ident(self : P) -> String? {
 ///|
 fn P::at_type(self : P) -> Bool {
   match self.peek() {
-    TKw("int") | TKw("char") | TKw("long") | TKw("void") => true
+    TKw("int") | TKw("char") | TKw("long") | TKw("void") | TKw("struct") => true
     _ => false
   }
 }
@@ -107,6 +108,7 @@ fn P::parse_type(self : P) -> Ty {
       self.pos = self.pos + 1
       TVoid
     }
+    TKw("struct") => self.parse_struct_type()
     _ => abort("qpcc: expected type")
   }
   let mut t = base
@@ -138,6 +140,83 @@ fn P::parse_declarator(self : P, base : Ty) -> (String, Ty) {
     t = TArr(t, n)
   }
   (name, t)
+}
+
+///|
+fn align_up(x : Int, a : Int) -> Int {
+  if a <= 1 {
+    x
+  } else {
+    (x + a - 1) / a * a
+  }
+}
+
+///|
+fn P::parse_struct_type(self : P) -> Ty {
+  self.expect_kw("struct")
+  let tag = match self.eat_ident() {
+    Some(n) => n
+    None => abort("qpcc: expected struct tag")
+  }
+  if self.eat("{") {
+    let members : Array[(String, Ty, Int)] = []
+    let mut off = 0
+    let mut maxa = 1
+    while !self.eat("}") {
+      let bty = self.parse_type()
+      let mut more = true
+      while more {
+        let (mname, mty) = self.parse_declarator(bty)
+        let a = align_of(mty, self.structs)
+        if a > maxa {
+          maxa = a
+        }
+        let sz = size_of(mty, self.structs)
+        off = align_up(off, a)
+        members.push((mname, mty, off))
+        off = off + sz
+        if self.eat(",") {
+          continue
+        }
+        more = false
+      }
+      self.expect(";")
+    }
+    let size = align_up(off, maxa)
+    let idx = self.structs.length()
+    self.structs.push(StructDef::{ name: tag, members, size, align: maxa, })
+    self.struct_tys.set(tag, idx)
+    TStruct(idx)
+  } else {
+    match self.struct_tys.get(tag) {
+      Some(i) => TStruct(i)
+      None => {
+        let idx = self.structs.length()
+        self.structs.push(StructDef::{
+          name: tag,
+          members: [],
+          size: 0,
+          align: 1,
+        })
+        self.struct_tys.set(tag, idx)
+        TStruct(idx)
+      }
+    }
+  }
+}
+
+///|
+fn P::lookup_member(self : P, ty : Ty, name : String) -> (Int, Ty) {
+  let i = match decay(ty) {
+    TStruct(j) => j
+    _ => abort("qpcc: member access on non-struct")
+  }
+  for m in self.structs[i].members {
+    if m.0 == name {
+      return (m.2, m.1)
+    }
+  }
+  abort("qpcc: no such member " + name)
 }
 
 ///|
@@ -381,6 +460,25 @@ fn P::parse_postfix(self : P) -> Expr {
       }
       let ptr = self.mk_bin("+", e, idx)
       e = mk(EDeref(ptr), elem)
+    } else if self.eat(".") {
+      let mname = match self.eat_ident() {
+        Some(n) => n
+        None => abort("qpcc: expected member name")
+      }
+      let (off, mty) = self.lookup_member(e.ty, mname)
+      e = mk(EMember(e, off), mty)
+    } else if self.eat("->") {
+      let mname = match self.eat_ident() {
+        Some(n) => n
+        None => abort("qpcc: expected member name")
+      }
+      let sty = match decay(e.ty) {
+        TPtr(TStruct(j)) => TStruct(j)
+        _ => abort("qpcc: member access on non-struct pointer")
+      }
+      let d = mk(EDeref(e), sty)
+      let (off, mty) = self.lookup_member(sty, mname)
+      e = mk(EMember(d, off), mty)
     } else if self.eat("++") {
       e = mk(EUn("post++", e), e.ty)
     } else if self.eat("--") {
@@ -428,14 +526,18 @@ fn P::parse_block(self : P) -> Stmt {
 fn P::parse_stmt(self : P) -> Stmt {
   if self.at_type() {
     let base = self.parse_type()
-    let (name, ty) = self.parse_declarator(base)
-    let init = if self.eat("=") { Some(self.parse_assign()) } else { None }
-    while self.eat(",") {
-      let _ = self.parse_declarator(base)
+    if self.eat(";") {
+      { kind: SBlock([]), }
+    } else {
+      let (name, ty) = self.parse_declarator(base)
+      let init = if self.eat("=") { Some(self.parse_assign()) } else { None }
+      while self.eat(",") {
+        let _ = self.parse_declarator(base)
+      }
+      self.expect(";")
+      self.locals.set(name, ty)
+      { kind: SLocal(name, ty, init), }
     }
-    self.expect(";")
-    self.locals.set(name, ty)
-    { kind: SLocal(name, ty, init), }
   } else if self.eat("{") {
     self.pos = self.pos - 1
     self.parse_block()
@@ -537,6 +639,9 @@ fn P::parse_params(self : P) -> Array[Param] {
 ///|
 fn P::parse_top(self : P) -> Unit {
   let base = self.parse_type()
+  if self.eat(";") {
+    return
+  }
   let (name, ty) = self.parse_declarator(base)
   if self.eat("(") {
     // function: params follow, we already consumed "("
@@ -590,6 +695,7 @@ pub fn parse(src : String) -> Program {
     funcs: Map::new(),
     strings: [],
     structs: [],
+    struct_tys: Map::new(),
     funcs_list: [],
     globals_list: [],
   }

@@ -44,7 +44,8 @@ fn kw_of(s : String) -> Bool {
     | "char"
     | "long"
     | "void"
-    | "sizeof" => true
+    | "sizeof"
+    | "struct" => true
     _ => false
   }
 }
@@ -220,6 +221,29 @@ fn read_punct(s : StringView) -> (String, StringView) {
 }
 
 ///|
+fn esc_code(c : Char) -> Int64 {
+  match c {
+    'n' => 10L
+    't' => 9L
+    'r' => 13L
+    '0' => 0L
+    '\\' => 92L
+    '\'' => 39L
+    '"' => 34L
+    _ => c.to_int().to_int64()
+  }
+}
+
+///|
+fn read_char(s : StringView) -> (Int64, StringView) {
+  match s {
+    ['\\', c, '\'', .. r] => (esc_code(c), r)
+    [c, '\'', .. r] => (c.to_int().to_int64(), r)
+    _ => abort("qpcc: bad character literal")
+  }
+}
+
+///|
 fn next_token(s : StringView) -> (Tok, StringView) {
   let s = skip_ws(s)
   match s {
@@ -234,6 +258,10 @@ fn next_token(s : StringView) -> (Tok, StringView) {
     ['"', .. r] => {
       let (st, r2) = read_string(r)
       (TStr(st), r2)
+    }
+    ['\'', .. r] => {
+      let (code, r2) = read_char(r)
+      (TNum(code), r2)
     }
     [_c, ..] => {
       let (p, r2) = read_punct(s)

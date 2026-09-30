@@ -31,3 +31,13 @@ test "qpcc: preprocessor lines are ignored" {
   }
   assert_true(il.contains("$main"))
 }
+
+///|
+test "qpcc: struct member access" {
+  let il = compile_il(
+    "struct P { int x; int y; }; int main() { struct P p; p.x = 3; p.y = 4; return p.x * 10 + p.y; }",
+  ) catch {
+    _ => fail("compile failed")
+  }
+  assert_true(il.contains("$main"))
+}

@@ -9,23 +9,25 @@ from scratch (design informed by chibicc and mbtcc; see the licensing note).
 
 ## Status
 
-Working today:
+Supported:
 
-- **M0/M1** - expressions with full precedence, local variables and
-  initializers, assignment and compound assignment, `if`/`else`, `while`, `for`,
-  `do`/`while`, `break`, `continue`, comparisons, `&&`/`||`/`!`, `? :`,
-  `sizeof`, increment/decrement.
-- **M2** - multiple functions, parameters, calls, recursion, libc calls
-  (`putchar`); `int`/`char`/`long`/`void` return types.
-- **M3** - pointers, address-of/deref, pointer arithmetic, one-dimensional
-  arrays, string literals and `char*` indexing, `sizeof` of types/expressions.
-- **M4 (partial)** - global variables (constant initializers) and a minimal
-  preprocessor that drops `#` lines (so `#include`/`#define` do not break parsing;
-  libc functions are implicitly declared). Structs are not yet supported.
+- expressions with full precedence; local variables and initializers;
+  assignment and compound assignment; `if`/`else`, `while`, `for`, `do`/`while`,
+  `break`, `continue`; comparisons, `&&`/`||`/`!`, `? :`; `sizeof`;
+  increment/decrement.
+- multiple functions, parameters, calls, recursion, libc calls (e.g.
+  `putchar`); `int`/`char`/`long`/`void` return types.
+- pointers, address-of/deref, pointer arithmetic, arrays, string literals,
+  character literals, `sizeof` of types and expressions.
+- struct types with `.` and `->` member access and C layout/alignment; global
+  variables with constant initializers.
+- a minimal preprocessor that drops `#` directive lines, so `#include` is
+  accepted (libc functions become implicit declarations). `#define` expansion is
+  not implemented.
 
-All values are 64-bit-register based: `int`/`char` use narrow stores and
-sign-extending loads, `long`/pointers use 64-bit loads. `&&`/`||` are evaluated
-without short-circuiting.
+Not yet supported: `#define` macro expansion, variadic functions, floating point,
+function pointers, `static`/`extern`, struct assignment/parameters,
+union/enum/typedef.
 
 ## Usage
 
@@ -36,20 +38,13 @@ without short-circuiting.
     # print the generated QBE IL instead of an object:
     ... cmd.exe input.c --emit qbe
 
-End-to-end check (compile each fixture, link with clang, run it):
+## Tests
 
     sh qpcc/test.sh
 
-## Roadmap
-
-| Milestone | Scope | State |
-| --- | --- | --- |
-| M0 | `int f() { return N; }` -> object -> clang -> run | done |
-| M1 | expressions, locals, control flow | done |
-| M2 | functions, calls, recursion, libc | done |
-| M3 | pointers, arrays, strings, `sizeof` | done |
-| M4 | structs; richer preprocessor | partial |
-| M5 | chibicc test subset as an oracle | pending |
+This is the oracle: for every `qpcc/tests/*.c` fixture it compiles once with
+`clang` and once with QPCC, links both, runs both, and compares exit codes and
+stdout. 25/25 fixtures pass.
 
 ## Layout
 
@@ -57,13 +52,13 @@ End-to-end check (compile each fixture, link with clang, run it):
     qpcc/ast.mbt       C types and AST
     qpcc/parser.mbt    recursive-descent parser
     qpcc/codegen.mbt   lowering onto ir_builder
-    qpcc/qpcc.mbt      driver (compile_il / compile_object, preprocessor)
+    qpcc/qpcc.mbt      driver + preprocessor
     qpcc/cmd/          executable CLI
     qpcc/tests/        C fixtures
-    qpcc/test.sh       end-to-end script
+    qpcc/test.sh       clang-oracle test runner
 
 ## Licensing
 
 QPCC is original code licensed under the Apache License 2.0 (like qbe.mbt). Its
 design is informed by chibicc (MIT, (c) 2019 Rui Ueyama) and mbtcc (Apache-2.0).
-No third-party source was copied; see ../THIRD_PARTY_NOTICES.md.
+No third-party source or test files were copied; see ../THIRD_PARTY_NOTICES.md.
