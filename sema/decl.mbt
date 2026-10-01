@@ -72,6 +72,10 @@ pub fn decl_name(d : @front.Declarator) -> String? {
 ///|
 pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
   let mut uns = false
+  // `signed` written explicitly, and whether the base type came from a typedef
+  // (whose own signedness must survive when no specifier overrides it).
+  let mut sgn = false
+  let mut from_typedef = false
   let mut complex = false
   let mut n_long = 0
   let mut n_short = 0
@@ -81,7 +85,7 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
       @front.TKw(k) =>
         match k {
           "unsigned" => uns = true
-          "signed" => ()
+          "signed" => sgn = true
           "short" => n_short = n_short + 1
           "long" => n_long = n_long + 1
           "int" => if base is None { base = Some(CInt(false)) }
@@ -105,7 +109,10 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
         base = Some(CEnum(define_enum(ctx, tag, items)))
       @front.TTypedefName(n) =>
         match ctx.scopes.lookup(n) {
-          Some(s) => base = Some(s.ty)
+          Some(s) => {
+            base = Some(s.ty)
+            from_typedef = true
+          }
           None => ctx.diags.error("unknown type name: " + n)
         }
       @front.TTypeofType(s2, d2) => {
@@ -124,21 +131,26 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
     Some(t) => t
     None => CInt(false)
   }
-  let r = match b {
-    CChar(_) => CChar(!uns)
-    CShort(_) => CShort(!uns)
-    CInt(_) =>
-      if n_short > 0 {
-        CShort(!uns)
-      } else if n_long == 1 {
-        CLong(!uns)
-      } else if n_long >= 2 {
-        CLongLong(!uns)
-      } else {
-        CInt(!uns)
-      }
-    CDouble => if n_long > 0 { CLongDouble } else { CDouble }
-    other => other
+  let r = if from_typedef && !uns && !sgn && n_short == 0 && n_long == 0 {
+    // `uint x` keeps uint's own signedness rather than defaulting to signed.
+    b
+  } else {
+    match b {
+      CChar(_) => CChar(!uns)
+      CShort(_) => CShort(!uns)
+      CInt(_) =>
+        if n_short > 0 {
+          CShort(!uns)
+        } else if n_long == 1 {
+          CLong(!uns)
+        } else if n_long >= 2 {
+          CLongLong(!uns)
+        } else {
+          CInt(!uns)
+        }
+      CDouble => if n_long > 0 { CLongDouble } else { CDouble }
+      other => other
+    }
   }
   if complex {
     CComplex(r)
