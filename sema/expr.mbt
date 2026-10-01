@@ -429,6 +429,11 @@ fn check_binary(
       (CComplex(a), CComplex(b)) => CComplex(promote_arith(a, b))
       (CComplex(a), _) => CComplex(promote_arith(a, rt))
       (_, CComplex(b)) => CComplex(promote_arith(lt, b))
+      // Subtracting two pointers yields ptrdiff_t, an integer, not a
+      // pointer. The code generator decides whether to scale a `p + i` by
+      // looking at the type of `i`, so typing this as a pointer silently
+      // turned `p[a - b]` into a byte offset.
+      (CPtr(pa), CPtr(_)) => if op == "-" { CLong(false) } else { CPtr(pa) }
       (CPtr(e), _) => if op == "+" || op == "-" { CPtr(e) } else { lt }
       (_, CPtr(e)) => CPtr(e)
       _ => promote_arith(lt, rt)
