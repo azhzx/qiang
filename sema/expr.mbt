@@ -520,9 +520,6 @@ fn check_call(
   }
   let tc = check_expr(callee, ctx)
   let targs : Array[TExpr] = []
-  for a in args {
-    targs.push(check_expr(a, ctx))
-  }
   let fty = decay(tc.ty)
   let (name, ret, params, va) = match fty {
     CPtr(CFunc(r, ps, v)) => {
@@ -543,6 +540,27 @@ fn check_call(
       ctx.diags.error("called object is not a function")
       ("", CInt(false), [], true)
     }
+  }
+  let mut argi = 0
+  for a in args {
+    let te = check_expr(a, ctx)
+    // Arguments that have no declared parameter get the default argument
+    // promotions: arrays and functions decay, and float widens to double.
+    let v = if va && argi >= params.length() {
+      let dt = decay(te.ty)
+      if !ty_eq(dt, te.ty) {
+        mk_expr(TCast(te), dt, false)
+      } else {
+        match te.ty {
+          CFloat => mk_expr(TCast(te), CDouble, false)
+          _ => te
+        }
+      }
+    } else {
+      te
+    }
+    targs.push(v)
+    argi = argi + 1
   }
   if !va && params.length() > 0 && targs.length() > params.length() {
     ctx.diags.error("too many arguments to function: " + name)
