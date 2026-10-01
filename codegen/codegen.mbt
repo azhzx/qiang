@@ -1035,9 +1035,9 @@ fn Cg::gen_bin(c : Cg, op : String, l : @sema.TExpr, r : @sema.TExpr) -> Int {
   let uns = is_uns(lt) || is_uns(rt) || is_ptr_ty(lt) || is_ptr_ty(rt)
   if op == "&&" || op == "||" {
     let a = c.gen_expr(l)
-    let av = c.coerce(a, cls_of(lt), cls, uns=is_uns(lt))
+    let av = c.coerce(a, cls_of(lt), cls)
     let b = c.gen_expr(r)
-    let bv = c.coerce(b, cls_of(rt), cls, uns=is_uns(rt))
+    let bv = c.coerce(b, cls_of(rt), cls)
     let z = c.zero_of(cls)
     let nz = if cls == @types.Ks || cls == @types.Kd {
       @types.Cnes
@@ -1052,9 +1052,9 @@ fn Cg::gen_bin(c : Cg, op : String, l : @sema.TExpr, r : @sema.TExpr) -> Int {
     c.b.arith(c.fid, o, @types.Kw, ca, cb)
   } else if is_cmp(op) {
     let a = c.gen_expr(l)
-    let av = c.coerce(a, cls_of(lt), cls, uns=is_uns(lt))
+    let av = c.coerce(a, cls_of(lt), cls)
     let b = c.gen_expr(r)
-    let bv = c.coerce(b, cls_of(rt), cls, uns=is_uns(rt))
+    let bv = c.coerce(b, cls_of(rt), cls)
     c.b.cmp(c.fid, cmp_op(op, cls, uns, fl), cls, av, bv)
   } else if (op == "+" || op == "-") && !fl {
     match (lt, rt) {
