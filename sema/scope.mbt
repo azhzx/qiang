@@ -21,6 +21,7 @@ pub(all) enum Storage {
 ///|
 pub struct Symbol {
   name : String
+  gname : String // non-empty for a static local, naming its global
   kind : SymKind
   ty : CType
   storage : Storage

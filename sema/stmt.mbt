@@ -177,6 +177,38 @@ fn complete_array(ty : CType, init : @front.Initializer, ctx : Ctx) -> CType {
 }
 
 ///|
+
+///|
+// A label address (&&l) is a code-generation-time constant, so an initializer
+// that contains one cannot be encoded into a global data section.
+fn init_has_label_addr(init : @front.Initializer) -> Bool {
+  match init {
+    @front.IExpr(e) => expr_has_label_addr(e)
+    @front.IList(items) => {
+      let mut r = false
+      for it in items {
+        if init_has_label_addr(it.init) {
+          r = true
+        }
+      }
+      r
+    }
+  }
+}
+
+///|
+fn expr_has_label_addr(e : @front.Expr) -> Bool {
+  match e {
+    @front.EUnary("&&", _) => true
+    @front.EBinary(_, l, r) => expr_has_label_addr(l) || expr_has_label_addr(r)
+    @front.EAssign(_, l, r) => expr_has_label_addr(r) || expr_has_label_addr(l)
+    @front.EUnary(_, x) => expr_has_label_addr(x)
+    @front.EPostfix(_, x) => expr_has_label_addr(x)
+    _ => false
+  }
+}
+
+///|
 fn check_local_decl(
   spec : @front.DeclSpec,
   decls : Array[@front.InitDeclarator],
@@ -196,34 +228,79 @@ fn check_local_decl(
         if is_td {
           ctx.scopes.define({
             name: n,
+            gname: "",
             kind: SymTypedef,
             ty,
             storage: StTypedef,
             value: 0L,
           })
         } else {
-          match idecl.init {
-            Some(@front.IExpr(e)) => {
-              let te = check_expr(e, ctx)
-              out.push({ kind: KSDecl(n, ty, Some(te)), })
-            }
-            Some(@front.IList(_)) => {
-              let stores : Array[(Int, TExpr)] = []
-              match idecl.init {
-                Some(init) => check_init_into(init, ty, 0, stores, ctx)
-                None => ()
-              }
-              out.push({ kind: KSAggInit(n, ty, stores), })
-            }
-            None => out.push({ kind: KSDecl(n, ty, None), })
+          let storage = storage_of(spec)
+          let lbl_init = match idecl.init {
+            Some(i) => init_has_label_addr(i)
+            None => false
           }
-          ctx.scopes.define({
-            name: n,
-            kind: SymVar,
-            ty,
-            storage: storage_of(spec),
-            value: 0L,
-          })
+          if storage is StStatic && !lbl_init {
+            // A static local lives in the data section, keeps its value across
+            // calls and is zero-initialised.
+            ctx.static_counter = ctx.static_counter + 1
+            let gname = "__static_" + n + "_" + ctx.static_counter.to_string()
+            let bytes : Array[Byte] = []
+            let relocs : Array[(Int, GlobalReloc)] = []
+            match idecl.init {
+              Some(init) => encode_global_init(init, ty, 0, bytes, relocs, ctx)
+              None => ()
+            }
+            let init0 = match idecl.init {
+              Some(@front.IExpr(e)) =>
+                if is_const_expr(e, ctx) {
+                  Some(const_eval_int(e, ctx))
+                } else {
+                  None
+                }
+              _ => None
+            }
+            ctx.globals.push({
+              name: gname,
+              ty,
+              init: init0,
+              bytes,
+              relocs,
+              is_export: false,
+            })
+            ctx.scopes.define({
+              name: n,
+              gname,
+              kind: SymVar,
+              ty,
+              storage,
+              value: 0L,
+            })
+          } else {
+            match idecl.init {
+              Some(@front.IExpr(e)) => {
+                let te = check_expr(e, ctx)
+                out.push({ kind: KSDecl(n, ty, Some(te)), })
+              }
+              Some(@front.IList(_)) => {
+                let stores : Array[(Int, TExpr)] = []
+                match idecl.init {
+                  Some(init) => check_init_into(init, ty, 0, stores, ctx)
+                  None => ()
+                }
+                out.push({ kind: KSAggInit(n, ty, stores), })
+              }
+              None => out.push({ kind: KSDecl(n, ty, None), })
+            }
+            ctx.scopes.define({
+              name: n,
+              gname: "",
+              kind: SymVar,
+              ty,
+              storage,
+              value: 0L,
+            })
+          }
         }
       None => ()
     }

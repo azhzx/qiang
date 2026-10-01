@@ -14,6 +14,7 @@ pub struct Ctx {
   mut switch_depth : Int
   mut labels : Map[String, Bool]
   mut gotos : Array[String]
+  mut static_counter : Int
 }
 
 ///|
@@ -302,6 +303,7 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
             if is_td {
               ctx.scopes.define({
                 name: n,
+                gname: "",
                 kind: SymTypedef,
                 ty,
                 storage: StTypedef,
@@ -310,6 +312,7 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
             } else if is_func_ty(ty) {
               ctx.scopes.define({
                 name: n,
+                gname: "",
                 kind: SymFunc,
                 ty,
                 storage: storage_of(spec),
@@ -318,6 +321,7 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
             } else {
               ctx.scopes.define({
                 name: n,
+                gname: "",
                 kind: SymVar,
                 ty,
                 storage: storage_of(spec),
@@ -366,6 +370,7 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
       if name != "" {
         ctx.scopes.define({
           name,
+          gname: "",
           kind: SymFunc,
           ty,
           storage: storage_of(spec),
@@ -381,6 +386,7 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
       ctx.labels = Map::new()
       ctx.scopes.define({
         name: "__func__",
+        gname: "",
         kind: SymVar,
         ty: CArray(CChar(true), 0),
         storage: StStatic,
@@ -388,6 +394,7 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
       })
       ctx.scopes.define({
         name: "__FUNCTION__",
+        gname: "",
         kind: SymVar,
         ty: CArray(CChar(true), 0),
         storage: StStatic,
@@ -395,6 +402,7 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
       })
       ctx.scopes.define({
         name: "__va_area__",
+        gname: "",
         kind: SymVar,
         ty: CPtr(CChar(true)),
         storage: StNone,
@@ -418,6 +426,7 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
             ctx.cur_params.push((pn, pty))
             ctx.scopes.define({
               name: pn,
+              gname: "",
               kind: SymVar,
               ty: pty,
               storage: StNone,
@@ -474,10 +483,12 @@ pub fn check(tu : @front.TranslationUnit) -> CheckedProgram {
     switch_depth: 0,
     labels: Map::new(),
     gotos: [],
+    static_counter: 0,
   }
   for n in ["__uint128_t", "__int128_t"] {
     ctx.scopes.define({
       name: n,
+      gname: "",
       kind: SymTypedef,
       ty: CBitInt(128),
       storage: StTypedef,
@@ -487,6 +498,7 @@ pub fn check(tu : @front.TranslationUnit) -> CheckedProgram {
   let va_list_ty = CPtr(CChar(true))
   ctx.scopes.define({
     name: "alloca",
+    gname: "",
     kind: SymFunc,
     ty: CFunc(CPtr(CVoid), [CInt(false)], false),
     storage: StNone,
@@ -495,6 +507,7 @@ pub fn check(tu : @front.TranslationUnit) -> CheckedProgram {
   for b in ["__builtin_alloca", "alloca"] {
     ctx.scopes.define({
       name: b,
+      gname: "",
       kind: SymFunc,
       ty: CFunc(CPtr(CVoid), [CInt(false)], false),
       storage: StNone,
@@ -508,6 +521,7 @@ pub fn check(tu : @front.TranslationUnit) -> CheckedProgram {
     ] {
     ctx.scopes.define({
       name: b,
+      gname: "",
       kind: SymFunc,
       ty: CFunc(CVoid, [va_list_ty, va_list_ty], true),
       storage: StNone,

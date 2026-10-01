@@ -335,6 +335,7 @@ fn define_enum(ctx : Ctx, tag : String?, items : Array[@front.EnumItem]) -> Int 
     vals.push((it.name, v))
     ctx.scopes.define({
       name: it.name,
+      gname: "",
       kind: SymEnumConst,
       ty: CInt(false),
       storage: StNone,
