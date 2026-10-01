@@ -92,6 +92,7 @@ pub fn collect_locals(s : TStmt, out : Array[(String, CType, Int)]) -> Unit {
         None => ()
       }
     }
+    KSCaseMark(_, _, b) => collect_locals(b, out)
     KSLabel(_, b) => collect_locals(b, out)
     KSGotoPtr(e) => collect_expr_locals(e, out)
     _ => ()
@@ -466,80 +467,91 @@ fn is_case_item(it : @front.BlockItem) -> Bool {
 }
 
 ///|
+fn sw_is_mark(st : TStmt) -> Bool {
+  match st.kind {
+    KSCaseMark(_, _, _) => true
+    _ => false
+  }
+}
+
+///|
+/// Registers every case label reachable from `st`, at any nesting depth. A
+/// label whose statement is nested must be found just the same as a top-level
+/// one, because jumping to it skips the enclosing condition; the Duff device
+/// in a switch-heavy parser is the pattern that needs this.
+fn sw_collect_one(
+  st : TStmt,
+  cases : Array[(Int64, TStmt)],
+  dflt : Array[TStmt?],
+) -> Unit {
+  match st.kind {
+    KSBlock(ss) => sw_collect(ss, cases, dflt)
+    KSIf(_, a, b) => {
+      sw_collect_one(a, cases, dflt)
+      match b {
+        Some(x) => sw_collect_one(x, cases, dflt)
+        None => ()
+      }
+    }
+    KSWhile(_, b) => sw_collect_one(b, cases, dflt)
+    KSDoWhile(b, _) => sw_collect_one(b, cases, dflt)
+    KSFor(_, _, _, b) => sw_collect_one(b, cases, dflt)
+    KSLabel(_, b) => sw_collect_one(b, cases, dflt)
+    KSSwitch(_, _, _) => ()
+    _ => ()
+  }
+}
+
+///|
+/// Walks one statement list in source order. A label becomes an entry whose
+/// block runs from the label up to the next label in the same list, so the
+/// fall-through between the generated case blocks reproduces the fall-through
+/// in the source.
+fn sw_collect(
+  ss : Array[TStmt],
+  cases : Array[(Int64, TStmt)],
+  dflt : Array[TStmt?],
+) -> Unit {
+  let n = ss.length()
+  let mut i = 0
+  while i < n {
+    match ss[i].kind {
+      KSCaseMark(vals, is_def, inner) => {
+        let blk : Array[TStmt] = [inner]
+        let mut j = i + 1
+        while j < n && !sw_is_mark(ss[j]) {
+          blk.push(ss[j])
+          j = j + 1
+        }
+        let block : TStmt = { kind: KSBlock(blk), }
+        if is_def {
+          dflt[0] = Some(block)
+        } else {
+          for v in vals {
+            cases.push((v, block))
+          }
+        }
+        sw_collect_one(inner, cases, dflt)
+      }
+      _ => sw_collect_one(ss[i], cases, dflt)
+    }
+    i = i + 1
+  }
+}
+
+///|
 fn check_switch(ctrl : @front.Expr, body : @front.Stmt, ctx : Ctx) -> TStmt {
   let tc = check_expr(ctrl, ctx)
   ctx.switch_depth = ctx.switch_depth + 1
-  let cases : Array[(Int64, TStmt)] = []
-  let mut dflt : TStmt? = None
-  match body.kind {
-    @front.SCompound(items) => {
-      let mut i = 0
-      let n = items.length()
-      while i < n {
-        if is_case_item(items[i]) {
-          let arr : Array[TStmt] = []
-          let vals : Array[Int64] = []
-          let mut is_default = false
-          match items[i] {
-            @front.BStmt(sc) =>
-              match sc.kind {
-                @front.SCase(e, st) => {
-                  vals.push(const_eval_int(e, ctx))
-                  match st {
-                    Some(x) => arr.push(check_stmt(x, ctx))
-                    None => ()
-                  }
-                }
-                @front.SCaseRange(lo, hi, st) => {
-                  let a = const_eval_int(lo, ctx)
-                  let b = const_eval_int(hi, ctx)
-                  let mut v = a
-                  while v <= b {
-                    vals.push(v)
-                    v = v + 1L
-                  }
-                  match st {
-                    Some(x) => arr.push(check_stmt(x, ctx))
-                    None => ()
-                  }
-                }
-                @front.SDefault(st) => {
-                  is_default = true
-                  match st {
-                    Some(x) => arr.push(check_stmt(x, ctx))
-                    None => ()
-                  }
-                }
-                _ => ()
-              }
-            _ => ()
-          }
-          let mut j = i + 1
-          while j < n && !is_case_item(items[j]) {
-            arr.push(check_block_item(items[j], ctx))
-            j = j + 1
-          }
-          let block : TStmt = { kind: KSBlock(arr), }
-          if is_default {
-            dflt = Some(block)
-          } else {
-            for v in vals {
-              cases.push((v, block))
-            }
-          }
-          i = j
-        } else {
-          let _ = check_block_item(items[i], ctx)
-          i = i + 1
-        }
-      }
-    }
-    _ => {
-      let _ = check_stmt(body, ctx)
-    }
+  let stmts : Array[TStmt] = match body.kind {
+    @front.SCompound(items) => check_block_items(items, ctx)
+    _ => [check_stmt(body, ctx)]
   }
+  let cases : Array[(Int64, TStmt)] = []
+  let dflt : Array[TStmt?] = [None]
+  sw_collect(stmts, cases, dflt)
   ctx.switch_depth = ctx.switch_depth - 1
-  { kind: KSSwitch(tc, cases, dflt), }
+  { kind: KSSwitch(tc, cases, dflt[0]), }
 }
 
 ///|
@@ -661,21 +673,35 @@ pub fn check_stmt(s : @front.Stmt, ctx : Ctx) -> TStmt {
       { kind: KSEmpty, }
     }
     @front.SSwitch(ctrl, body) => check_switch(ctrl, body, ctx)
-    @front.SCase(_, st) =>
-      match st {
+    @front.SCase(e, st) => {
+      let inner = match st {
         Some(x) => check_stmt(x, ctx)
         None => { kind: KSEmpty, }
       }
-    @front.SCaseRange(_, _, st) =>
-      match st {
+      { kind: KSCaseMark([const_eval_int(e, ctx)], false, inner), }
+    }
+    @front.SCaseRange(lo, hi, st) => {
+      let vals : Array[Int64] = []
+      let a = const_eval_int(lo, ctx)
+      let b = const_eval_int(hi, ctx)
+      let mut v = a
+      while v <= b {
+        vals.push(v)
+        v = v + 1L
+      }
+      let inner = match st {
         Some(x) => check_stmt(x, ctx)
         None => { kind: KSEmpty, }
       }
-    @front.SDefault(st) =>
-      match st {
+      { kind: KSCaseMark(vals, false, inner), }
+    }
+    @front.SDefault(st) => {
+      let inner = match st {
         Some(x) => check_stmt(x, ctx)
         None => { kind: KSEmpty, }
       }
+      { kind: KSCaseMark([], true, inner), }
+    }
     _ => { kind: KSEmpty, }
   }
 }

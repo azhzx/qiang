@@ -49,6 +49,10 @@ pub(all) enum TStmtKind {
   KSGoto(String)
   KSGotoPtr(TExpr)
   KSSwitch(TExpr, Array[(Int64, TStmt)], TStmt?)
+  // A case (or default) label still attached to its statement. The label runs
+  // nothing, so code generation just emits `body`; it exists so a switch can
+  // find cases nested anywhere in its body, which is what a Duff's device needs.
+  KSCaseMark(Array[Int64], Bool, TStmt)
   KSDecl(String, CType, TExpr?, Int)
   KSAggInit(String, CType, Array[(Int, TExpr, Int, Int)], Int)
   KSEmpty

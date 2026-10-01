@@ -1376,6 +1376,7 @@ fn collect_labels(s : @sema.TStmt, out : Array[String]) -> Unit {
       for x in ss {
         collect_labels(x, out)
       }
+    @sema.KSCaseMark(_, _, b) => collect_labels(b, out)
     @sema.KSLabel(n, b) => {
       out.push(n)
       collect_labels(b, out)
@@ -1760,6 +1761,7 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
       }
       c.switch(end)
     }
+    @sema.KSCaseMark(_, _, b) => c.gen_stmt(b)
     @sema.KSLabel(n, b) => {
       let blk = match c.labels.get(n) {
         Some(x) => x
