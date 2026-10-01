@@ -49,8 +49,8 @@ pub(all) enum TStmtKind {
   KSGoto(String)
   KSGotoPtr(TExpr)
   KSSwitch(TExpr, Array[(Int64, TStmt)], TStmt?)
-  KSDecl(String, CType, TExpr?)
-  KSAggInit(String, CType, Array[(Int, TExpr)])
+  KSDecl(String, CType, TExpr?, Int)
+  KSAggInit(String, CType, Array[(Int, TExpr)], Int)
   KSEmpty
 }
 
@@ -73,6 +73,7 @@ pub struct CheckedGlobal {
   bytes : Array[Byte]
   relocs : Array[(Int, GlobalReloc)]
   is_export : Bool
+  align : Int
 }
 
 ///|
@@ -80,7 +81,7 @@ pub struct CheckedFunc {
   name : String
   ty : CType
   params : Array[(String, CType)]
-  locals : Array[(String, CType)]
+  locals : Array[(String, CType, Int)]
   is_vararg : Bool
   is_export : Bool
   body : TStmt

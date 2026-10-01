@@ -22,21 +22,21 @@ pub fn func_params(d : @front.Declarator) -> Array[@front.ParamDecl] {
 }
 
 ///|
-pub fn collect_locals(s : TStmt, out : Array[(String, CType)]) -> Unit {
+pub fn collect_locals(s : TStmt, out : Array[(String, CType, Int)]) -> Unit {
   match s.kind {
     KSBlock(items) =>
       for x in items {
         collect_locals(x, out)
       }
-    KSDecl(n, ty, init) => {
-      out.push((n, ty))
+    KSDecl(n, ty, init, al) => {
+      out.push((n, ty, al))
       match init {
         Some(e) => collect_expr_locals(e, out)
         None => ()
       }
     }
-    KSAggInit(n, ty, stores) => {
-      out.push((n, ty))
+    KSAggInit(n, ty, stores, al) => {
+      out.push((n, ty, al))
       for entry in stores {
         collect_expr_locals(entry.1, out)
       }
@@ -99,7 +99,7 @@ pub fn collect_locals(s : TStmt, out : Array[(String, CType)]) -> Unit {
 }
 
 ///|
-fn collect_expr_locals(e : TExpr, out : Array[(String, CType)]) -> Unit {
+fn collect_expr_locals(e : TExpr, out : Array[(String, CType, Int)]) -> Unit {
   match e.kind {
     TStmtExpr(items) =>
       for s in items {
@@ -209,6 +209,25 @@ fn expr_has_label_addr(e : @front.Expr) -> Bool {
 }
 
 ///|
+
+///|
+// Effective alignment of a declaration, taking _Alignas into account.
+fn spec_align(spec : @front.DeclSpec, ty : CType, ctx : Ctx) -> Int {
+  let mut a = align_of_ty(ty, ctx.layouts)
+  for al in spec.align {
+    let req = match al {
+      @front.AlignExpr(e) => const_eval_int(e, ctx).to_int()
+      @front.AlignType(s, d) =>
+        align_of_ty(build_type(d, declspec_to_type(s, ctx), ctx), ctx.layouts)
+    }
+    if req > a {
+      a = req
+    }
+  }
+  a
+}
+
+///|
 fn check_local_decl(
   spec : @front.DeclSpec,
   decls : Array[@front.InitDeclarator],
@@ -223,6 +242,7 @@ fn check_local_decl(
       Some(init) => ty = complete_array(ty, init, ctx)
       None => ()
     }
+    let al = spec_align(spec, ty, ctx)
     match decl_name(idecl.decl) {
       Some(n) =>
         if is_td {
@@ -267,6 +287,7 @@ fn check_local_decl(
               bytes,
               relocs,
               is_export: false,
+              align: al,
             })
             ctx.scopes.define({
               name: n,
@@ -280,7 +301,7 @@ fn check_local_decl(
             match idecl.init {
               Some(@front.IExpr(e)) => {
                 let te = check_expr(e, ctx)
-                out.push({ kind: KSDecl(n, ty, Some(te)), })
+                out.push({ kind: KSDecl(n, ty, Some(te), al), })
               }
               Some(@front.IList(_)) => {
                 let stores : Array[(Int, TExpr)] = []
@@ -288,9 +309,9 @@ fn check_local_decl(
                   Some(init) => check_init_into(init, ty, 0, stores, ctx)
                   None => ()
                 }
-                out.push({ kind: KSAggInit(n, ty, stores), })
+                out.push({ kind: KSAggInit(n, ty, stores, al), })
               }
-              None => out.push({ kind: KSDecl(n, ty, None), })
+              None => out.push({ kind: KSDecl(n, ty, None, al), })
             }
             ctx.scopes.define({
               name: n,

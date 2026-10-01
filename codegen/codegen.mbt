@@ -267,10 +267,24 @@ fn is_composite(ty : @sema.CType) -> Bool {
 
 ///|
 fn Cg::alloc_slot(c : Cg, size : Int) -> Int {
-  let sz = if size < 8 { 8 } else { (size + 7) / 8 * 8 }
+  c.alloc_slot_al(size, 0)
+}
+
+///|
+// Allocate a stack slot with an explicit alignment (C _Alignas).
+fn Cg::alloc_slot_al(c : Cg, size : Int, align : Int) -> Int {
+  let a = if align < 8 { 8 } else if align <= 16 { align } else { 16 }
+  let sz = if size < a { a } else { (size + a - 1) / a * a }
+  let op = if a >= 16 {
+    @types.Alloc16
+  } else if a >= 8 {
+    @types.Alloc8
+  } else {
+    @types.Alloc4
+  }
   c.b.emit_ins(
     c.fid,
-    @types.Alloc8,
+    op,
     @types.Kl,
     @types.Kl,
     c.b.iconst(c.fid, sz.to_int64()),
@@ -1362,7 +1376,7 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
         }
         c.gen_stmt(x)
       }
-    @sema.KSDecl(name, ty, init) =>
+    @sema.KSDecl(name, ty, init, _) =>
       match init {
         Some(e) => {
           let a = match c.locals.get(name) {
@@ -1396,7 +1410,7 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
         }
         None => ()
       }
-    @sema.KSAggInit(name, ty, items) => {
+    @sema.KSAggInit(name, ty, items, _) => {
       let base = match c.locals.get(name) {
         Some(x) => x
         None => abort("qpcc: unbound local " + name)
@@ -1727,9 +1741,9 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
     }
   }
   for entry in f.locals {
-    let (n, t) = entry
+    let (n, t, al) = entry
     let raw = size_of(t, c.layouts)
-    let slot = c.alloc_slot(raw)
+    let slot = c.alloc_slot_al(raw, al)
     c.locals.set(n, slot)
     c.local_ty.set(n, t)
   }
@@ -1775,7 +1789,11 @@ pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
   for g in p.globals {
     let sz = size_of(g.ty, p.layouts)
     if g.relocs.length() > 0 {
-      b.data_begin(g.name, g.is_export)
+      if g.align > 8 {
+        b.data_begin_aligned(g.name, g.is_export, g.align.to_int64())
+      } else {
+        b.data_begin(g.name, g.is_export)
+      }
       let mut pos = 0
       for entry in g.relocs {
         let (off, r) = entry
@@ -1809,22 +1827,42 @@ pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
       }
       b.data_end()
     } else if g.bytes.length() > 0 {
-      b.data_bytes(g.name, g.is_export, Bytes::from_array(g.bytes[:]))
+      if g.align > 8 {
+        b.data_begin_aligned(g.name, g.is_export, g.align.to_int64())
+        for by in g.bytes {
+          b.data_byte(by.to_int().to_int64())
+        }
+        b.data_end()
+      } else {
+        b.data_bytes(g.name, g.is_export, Bytes::from_array(g.bytes[:]))
+      }
     } else {
       let v = match g.init {
         Some(x) => x
         None => 0L
       }
+      let raw : Array[Byte] = []
       if is_composite(g.ty) {
-        let arr : Array[Byte] = []
         let mut i = 0
         while i < sz {
-          arr.push((0).to_byte())
+          raw.push((0).to_byte())
           i = i + 1
         }
-        b.data_bytes(g.name, g.is_export, Bytes::from_array(arr[:]))
       } else {
-        b.data_bytes(g.name, g.is_export, le_bytes(v))
+        let mut i = 0
+        while i < 8 {
+          raw.push(((v >> (i * 8)) & 0xFFL).to_int().to_byte())
+          i = i + 1
+        }
+      }
+      if g.align > 8 {
+        b.data_begin_aligned(g.name, g.is_export, g.align.to_int64())
+        for by in raw {
+          b.data_byte(by.to_int().to_int64())
+        }
+        b.data_end()
+      } else {
+        b.data_bytes(g.name, g.is_export, Bytes::from_array(raw[:]))
       }
     }
   }

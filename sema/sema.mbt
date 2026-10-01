@@ -9,7 +9,7 @@ pub struct Ctx {
   funcs : Array[CheckedFunc]
   globals : Array[CheckedGlobal]
   mut cur_params : Array[(String, CType)]
-  mut cur_locals : Array[(String, CType)]
+  mut cur_locals : Array[(String, CType, Int)]
   mut loop_depth : Int
   mut switch_depth : Int
   mut labels : Map[String, Bool]
@@ -346,6 +346,7 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
               let is_extern = storage_of(spec) is StExtern
               if !(is_extern && !has_init) {
                 let is_export = !(storage_of(spec) is StStatic)
+                let align = spec_align(spec, ty, ctx)
                 ctx.globals.push({
                   name: n,
                   ty,
@@ -353,6 +354,7 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
                   bytes,
                   relocs,
                   is_export,
+                  align,
                 })
               }
             }
