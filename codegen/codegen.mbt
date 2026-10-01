@@ -463,11 +463,17 @@ fn Cg::gen_addr(c : Cg, e : @sema.TExpr) -> Int {
           )
         }
         let v = c.gen_expr(x)
-        let vv = c.coerce(v, cls_of(x.ty), cls_of(x.ty))
-        if bw > 0 {
-          c.store_bitfield(x.ty, vv, addr, bo, bw)
+        // A composite member is a pointer to the value, so it is copied rather
+        // than stored as a scalar (store_scalar ignores aggregate types).
+        if is_composite(x.ty) {
+          c.emit_memcpy(addr, v, size_of(x.ty, c.layouts))
         } else {
-          c.store_scalar(x.ty, vv, addr)
+          let vv = c.coerce(v, cls_of(x.ty), cls_of(x.ty))
+          if bw > 0 {
+            c.store_bitfield(x.ty, vv, addr, bo, bw)
+          } else {
+            c.store_scalar(x.ty, vv, addr)
+          }
         }
       }
       slot
@@ -1566,11 +1572,15 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
           )
         }
         let v = c.gen_expr(e)
-        let vv = c.coerce(v, cls_of(e.ty), cls_of(e.ty))
-        if bw > 0 {
-          c.store_bitfield(e.ty, vv, addr, bo, bw)
+        if is_composite(e.ty) {
+          c.emit_memcpy(addr, v, size_of(e.ty, c.layouts))
         } else {
-          c.store_scalar(e.ty, vv, addr)
+          let vv = c.coerce(v, cls_of(e.ty), cls_of(e.ty))
+          if bw > 0 {
+            c.store_bitfield(e.ty, vv, addr, bo, bw)
+          } else {
+            c.store_scalar(e.ty, vv, addr)
+          }
         }
       }
       let _ = ty
