@@ -133,11 +133,24 @@ fn Cg::norm_bool(c : Cg, v : Int) -> Int {
 }
 
 ///|
-fn Cg::coerce(c : Cg, v : Int, from : @types.Class, to : @types.Class) -> Int {
+fn Cg::coerce(
+  c : Cg,
+  v : Int,
+  from : @types.Class,
+  to : @types.Class,
+  uns? : Bool = false,
+) -> Int {
   if from == to {
     v
   } else if from == @types.Kw && to == @types.Kl {
-    c.b.unop(c.fid, @types.Extsw, @types.Kl, @types.Kl, v)
+    // A 32-bit word widened to 64 bits keeps its value only if the
+    // extension matches the source signedness.  Using Extsw for an
+    // unsigned source turns 0x80000000 into -2147483648.
+    if uns {
+      c.b.unop(c.fid, @types.Extuw, @types.Kl, @types.Kl, v)
+    } else {
+      c.b.unop(c.fid, @types.Extsw, @types.Kl, @types.Kl, v)
+    }
   } else if from == @types.Kl && to == @types.Kw {
     c.b.unop(c.fid, @types.Copy, @types.Kw, @types.Kw, v)
   } else if from == @types.Kw && to == @types.Ks {
@@ -1022,9 +1035,9 @@ fn Cg::gen_bin(c : Cg, op : String, l : @sema.TExpr, r : @sema.TExpr) -> Int {
   let uns = is_uns(lt) || is_uns(rt) || is_ptr_ty(lt) || is_ptr_ty(rt)
   if op == "&&" || op == "||" {
     let a = c.gen_expr(l)
-    let av = c.coerce(a, cls_of(lt), cls)
+    let av = c.coerce(a, cls_of(lt), cls, uns=is_uns(lt))
     let b = c.gen_expr(r)
-    let bv = c.coerce(b, cls_of(rt), cls)
+    let bv = c.coerce(b, cls_of(rt), cls, uns=is_uns(rt))
     let z = c.zero_of(cls)
     let nz = if cls == @types.Ks || cls == @types.Kd {
       @types.Cnes
@@ -1039,9 +1052,9 @@ fn Cg::gen_bin(c : Cg, op : String, l : @sema.TExpr, r : @sema.TExpr) -> Int {
     c.b.arith(c.fid, o, @types.Kw, ca, cb)
   } else if is_cmp(op) {
     let a = c.gen_expr(l)
-    let av = c.coerce(a, cls_of(lt), cls)
+    let av = c.coerce(a, cls_of(lt), cls, uns=is_uns(lt))
     let b = c.gen_expr(r)
-    let bv = c.coerce(b, cls_of(rt), cls)
+    let bv = c.coerce(b, cls_of(rt), cls, uns=is_uns(rt))
     c.b.cmp(c.fid, cmp_op(op, cls, uns, fl), cls, av, bv)
   } else if (op == "+" || op == "-") && !fl {
     match (lt, rt) {
@@ -1160,7 +1173,7 @@ fn Cg::convert(c : Cg, v : Int, from : @sema.CType, to : @sema.CType) -> Int {
     c.store_scalar(elem, c.zero_elem(elem), off)
     return slot
   }
-  c.truncate(to, c.coerce(v, cls_of(from), cls_of(to)))
+  c.truncate(to, c.coerce(v, cls_of(from), cls_of(to), uns=is_uns(from)))
 }
 
 ///|
