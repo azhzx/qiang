@@ -36,7 +36,8 @@ convenience.
 - Types: `void`, `_Bool`, `char`/`short`/`int`/`long`/`long long`, `float`,
   `double`, `long double` (8 bytes on arm64), pointers, arrays including VLA,
   functions, `struct`/`union`/`enum`, bitfields, `_Atomic` (single-threaded
-  semantics), `_Complex` (type and layout).
+  semantics), `_Complex` including single/double arithmetic, imaginary
+  literals and `__real__`/`__imag__`, `_Alignas` on locals and globals.
 - Expressions, statements, `switch`, `goto`, statement expressions, compound
   literals, `__builtin_offsetof`, `__builtin_types_compatible_p`, designated
   initializers.
@@ -54,13 +55,12 @@ convenience.
 - Atomics currently cover sequentially consistent load/store and fences; the
   read-modify-write forms (exchange, compare-exchange, fetch-add, ...) still need
   LL/SC or LSE lowering.
-- `_Complex` arithmetic and some aggregate initializer edge cases are
-  incomplete.
+- Some aggregate initializer edge cases are incomplete.
 - Diagnostics carry statement-level positions.
 
 ## Testing
 
-- `sh qpcc/test.sh` — clang oracle over `qpcc/tests/*.c` (57 fixtures).
+- `sh qpcc/test.sh` — clang oracle over `qpcc/tests/*.c` (73 fixtures).
 - `moon test --target native qpcc/front qpcc/sema` — front-end and sema tests.
 - `qpcc/chibicc-tests/` — a vendored chibicc subset used for parsing and
   end-to-end checks.
