@@ -64,3 +64,20 @@ convenience.
 - `moon test --target native qpcc/front qpcc/sema` — front-end and sema tests.
 - `qpcc/chibicc-tests/` — a vendored chibicc subset used for parsing and
   end-to-end checks.
+- `sh examples/qpcc-selfhost/build-qbe-with-qpcc.sh` — compiles the whole of
+  `vendor/qbe` with QPCC, links it, and checks that the resulting `qbe` emits
+  byte-identical assembly to a reference build over QBE's own test corpus.
+
+## Self-hosting
+
+QPCC builds QBE, and the binary it produces is itself a working QBE:
+
+```sh
+sh examples/qpcc-selfhost/build-qbe-with-qpcc.sh
+# ... test corpus: 76 identical, 0 differing, 76 total
+```
+
+That is the large-scale check that the compiler is correct: about 17k lines of
+ordinary C11, all three back ends, then 76 IL fixtures whose assembly output is
+compared byte for byte against a clang-built reference. See
+[`examples/qpcc-selfhost/`](../examples/qpcc-selfhost/README.md).

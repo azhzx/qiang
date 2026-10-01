@@ -60,6 +60,29 @@ fn ptr_reloc(e : @front.Expr, elem : CType, ctx : Ctx) -> GlobalReloc? {
       Some(RString(idx, 0))
     }
     @front.EIdent(n) => Some(RGlobal(n, 0))
+    // A compound literal with static storage (file scope, or a static local's
+    // initializer) becomes its own anonymous object, and the reference is to
+    // that object. Block-scope compound literals go through TCompoundLit
+    // instead and never reach here.
+    @front.ECompound(spec, d, ini) => {
+      let base = declspec_to_type(spec, ctx)
+      let ty = build_type(d, base, ctx)
+      let bytes : Array[Byte] = []
+      let relocs : Array[(Int, GlobalReloc)] = []
+      encode_global_init(ini, ty, 0, bytes, relocs, ctx)
+      ctx.static_counter = ctx.static_counter + 1
+      let gname = "__compound_" + ctx.static_counter.to_string()
+      ctx.globals.push({
+        name: gname,
+        ty,
+        init: None,
+        bytes,
+        relocs,
+        is_export: false,
+        align: align_of_ty(ty, ctx.layouts),
+      })
+      Some(RGlobal(gname, 0))
+    }
     @front.EUnary("&", x) =>
       match x {
         @front.EIdent(n) => Some(RGlobal(n, 0))
