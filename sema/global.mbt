@@ -195,14 +195,29 @@ pub fn encode_global_init(
               )
             } else if midx < lay.fields.length() {
               let f = lay.fields[midx]
-              encode_global_init(
-                it.init,
-                f.ty,
-                off + f.offset,
-                bytes,
-                relocs,
-                ctx,
-              )
+              if f.bit_width > 0 {
+                match it.init {
+                  @front.IExpr(e) =>
+                    put_bits(
+                      bytes,
+                      off + f.offset,
+                      size_of_ty(f.ty, ctx.layouts),
+                      f.bit_offset,
+                      f.bit_width,
+                      const_eval_int(e, ctx),
+                    )
+                  _ => ()
+                }
+              } else {
+                encode_global_init(
+                  it.init,
+                  f.ty,
+                  off + f.offset,
+                  bytes,
+                  relocs,
+                  ctx,
+                )
+              }
             }
             midx = midx + 1
           }
@@ -225,6 +240,28 @@ pub fn encode_global_init(
             encode_global_init(items[0].init, ty, off, bytes, relocs, ctx)
           }
       }
+  }
+}
+
+///|
+// Merge a value into a bitfield that lives inside the bytes already emitted.
+fn put_bits(
+  bytes : Array[Byte],
+  off : Int,
+  size : Int,
+  bo : Int,
+  bw : Int,
+  v : Int64,
+) -> Unit {
+  ensure_len(bytes, off + size)
+  let mut cur = 0L
+  for i in 0..<size {
+    cur = cur | (bytes[off + i].to_int().to_int64() << (8 * i))
+  }
+  let fmask = (1L << bw) - 1L
+  cur = (cur & (-1L ^ (fmask << bo))) | ((v & fmask) << bo)
+  for i in 0..<size {
+    bytes[off + i] = ((cur >> (8 * i)) & 0xFFL).to_int().to_byte()
   }
 }
 
@@ -286,16 +323,31 @@ fn encode_designated(
           let lay = ctx.layouts[i]
           match field_of(lay, nm) {
             Some(f) =>
-              encode_designated(
-                init,
-                f.ty,
-                off + f.offset,
-                bytes,
-                relocs,
-                ctx,
-                desigs,
-                di + 1,
-              )
+              if f.bit_width > 0 {
+                match init {
+                  @front.IExpr(e) =>
+                    put_bits(
+                      bytes,
+                      off + f.offset,
+                      size_of_ty(f.ty, ctx.layouts),
+                      f.bit_offset,
+                      f.bit_width,
+                      const_eval_int(e, ctx),
+                    )
+                  _ => ()
+                }
+              } else {
+                encode_designated(
+                  init,
+                  f.ty,
+                  off + f.offset,
+                  bytes,
+                  relocs,
+                  ctx,
+                  desigs,
+                  di + 1,
+                )
+              }
             None => ()
           }
         }
