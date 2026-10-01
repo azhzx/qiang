@@ -1414,6 +1414,32 @@ fn Cg::gen_switch(
 }
 
 ///|
+
+///|
+// Branch to t when e is true, to f otherwise. && and || are expanded into
+// control flow so their right-hand sides are only evaluated when needed.
+fn Cg::gen_cond_branch(c : Cg, e : @sema.TExpr, t : Int, f : Int) -> Unit {
+  match e.kind {
+    @sema.TBin(op, l, r) if op == "&&" || op == "||" => {
+      let mid = c.new_block(if op == "&&" { "and.rhs" } else { "or.rhs" })
+      if op == "&&" {
+        c.gen_cond_branch(l, mid, f)
+      } else {
+        c.gen_cond_branch(l, t, mid)
+      }
+      c.open = false
+      c.switch(mid)
+      c.gen_cond_branch(r, t, f)
+    }
+    _ => {
+      let v = c.gen_expr(e)
+      c.b.jnz(c.fid, v, t, [], f, [])
+      c.open = false
+    }
+  }
+}
+
+///|
 fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
   match s.kind {
     @sema.KSBlock(ss) =>
@@ -1509,9 +1535,7 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
       let t = c.new_block("if.then")
       let e = c.new_block("if.else")
       let end = c.new_block("if.end")
-      let cv = c.gen_expr(cond)
-      c.b.jnz(c.fid, cv, t, [], e, [])
-      c.open = false
+      c.gen_cond_branch(cond, t, e)
       c.switch(t)
       c.gen_stmt(then_s)
       if c.open {
@@ -1536,9 +1560,7 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
       c.b.jmp(c.fid, cb, [])
       c.open = false
       c.switch(cb)
-      let cv = c.gen_expr(cond)
-      c.b.jnz(c.fid, cv, bb, [], end, [])
-      c.open = false
+      c.gen_cond_branch(cond, bb, end)
       c.break_blks.push(end)
       c.cont_blks.push(cb)
       c.switch(bb)
@@ -1568,9 +1590,7 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
       let _ = c.break_blks.pop()
       let _ = c.cont_blks.pop()
       c.switch(cb)
-      let cv = c.gen_expr(cond)
-      c.b.jnz(c.fid, cv, bb, [], end, [])
-      c.open = false
+      c.gen_cond_branch(cond, bb, end)
       c.switch(end)
     }
     @sema.KSFor(init, cond, step, body) => {

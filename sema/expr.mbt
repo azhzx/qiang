@@ -218,13 +218,15 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
     }
     @front.EMember(base, name, arrow) => {
       let tb = check_expr(base, ctx)
-      let sty = if arrow {
+      // `p->f` is `(*p).f`: the member base must be the dereferenced pointer,
+      // not the pointer expression itself.
+      let (sty, mb) = if arrow {
         match decay(tb.ty) {
-          CPtr(t) => t
-          _ => tb.ty
+          CPtr(t) => (t, mk_expr(TDeref(tb), t, true))
+          _ => (tb.ty, tb)
         }
       } else {
-        tb.ty
+        (tb.ty, tb)
       }
       match sty {
         CStruct(i) | CUnion(i) =>
@@ -232,12 +234,12 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
             Some(f) =>
               if f.bit_width > 0 {
                 mk_expr(
-                  TBitField(tb, f.offset, f.bit_offset, f.bit_width),
+                  TBitField(mb, f.offset, f.bit_offset, f.bit_width),
                   f.ty,
                   true,
                 )
               } else {
-                mk_expr(TMember(tb, f.offset), f.ty, arrow || tb.lvalue)
+                mk_expr(TMember(mb, f.offset), f.ty, arrow || tb.lvalue)
               }
             None => {
               ctx.diags.error("no member named " + name)
