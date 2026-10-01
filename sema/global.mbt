@@ -141,15 +141,27 @@ pub fn encode_global_init(
           let stride = size_of_ty(el, ctx.layouts)
           let mut idx = 0
           for it in items {
-            let o = if it.designators.length() > 0 {
-              match it.designators[0] {
-                @front.DIndex(de) => const_eval_int(de, ctx).to_int() * stride
-                _ => idx * stride
-              }
+            if it.designators.length() > 0 {
+              encode_designated(
+                it.init,
+                ty,
+                off,
+                bytes,
+                relocs,
+                ctx,
+                it.designators,
+                0,
+              )
             } else {
-              idx * stride
+              encode_global_init(
+                it.init,
+                el,
+                off + idx * stride,
+                bytes,
+                relocs,
+                ctx,
+              )
             }
-            encode_global_init(it.init, el, off + o, bytes, relocs, ctx)
             idx = idx + 1
           }
         }
@@ -157,21 +169,28 @@ pub fn encode_global_init(
           let lay = ctx.layouts[i]
           let mut midx = 0
           for it in items {
-            let (moff, mty) = if it.designators.length() > 0 {
-              match it.designators[0] {
-                @front.DField(n) =>
-                  match field_of(lay, n) {
-                    Some(f) => (f.offset, f.ty)
-                    None => (0, CInt(false))
-                  }
-                _ => (0, CInt(false))
-              }
+            if it.designators.length() > 0 {
+              encode_designated(
+                it.init,
+                ty,
+                off,
+                bytes,
+                relocs,
+                ctx,
+                it.designators,
+                0,
+              )
             } else if midx < lay.fields.length() {
-              (lay.fields[midx].offset, lay.fields[midx].ty)
-            } else {
-              (0, CInt(false))
+              let f = lay.fields[midx]
+              encode_global_init(
+                it.init,
+                f.ty,
+                off + f.offset,
+                bytes,
+                relocs,
+                ctx,
+              )
             }
-            encode_global_init(it.init, mty, off + moff, bytes, relocs, ctx)
             midx = midx + 1
           }
         }
@@ -192,6 +211,82 @@ pub fn encode_global_init(
           if items.length() > 0 {
             encode_global_init(items[0].init, ty, off, bytes, relocs, ctx)
           }
+      }
+  }
+}
+
+///|
+// Apply an initializer under a possibly nested designator chain such as
+// [2][0] or .a.b, descending into the type one designator at a time.
+fn encode_designated(
+  init : @front.Initializer,
+  ty : CType,
+  off : Int,
+  bytes : Array[Byte],
+  relocs : Array[(Int, GlobalReloc)],
+  ctx : Ctx,
+  desigs : Array[@front.Designator],
+  di : Int,
+) -> Unit {
+  if di >= desigs.length() {
+    encode_global_init(init, ty, off, bytes, relocs, ctx)
+    return
+  }
+  match desigs[di] {
+    @front.DIndex(de) =>
+      match ty {
+        CArray(el, _) => {
+          let stride = size_of_ty(el, ctx.layouts)
+          encode_designated(
+            init,
+            el,
+            off + const_eval_int(de, ctx).to_int() * stride,
+            bytes,
+            relocs,
+            ctx,
+            desigs,
+            di + 1,
+          )
+        }
+        _ => encode_global_init(init, ty, off, bytes, relocs, ctx)
+      }
+    @front.DRange(e, _) =>
+      match ty {
+        CArray(el, _) => {
+          let stride = size_of_ty(el, ctx.layouts)
+          encode_designated(
+            init,
+            el,
+            off + const_eval_int(e, ctx).to_int() * stride,
+            bytes,
+            relocs,
+            ctx,
+            desigs,
+            di + 1,
+          )
+        }
+        _ => encode_global_init(init, ty, off, bytes, relocs, ctx)
+      }
+    @front.DField(nm) =>
+      match ty {
+        CStruct(i) => {
+          let lay = ctx.layouts[i]
+          match field_of(lay, nm) {
+            Some(f) =>
+              encode_designated(
+                init,
+                f.ty,
+                off + f.offset,
+                bytes,
+                relocs,
+                ctx,
+                desigs,
+                di + 1,
+              )
+            None => ()
+          }
+        }
+        _ => encode_global_init(init, ty, off, bytes, relocs, ctx)
       }
   }
 }
