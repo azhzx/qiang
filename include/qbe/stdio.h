@@ -12,6 +12,8 @@ int sprintf(char *, char *, ...);
 int snprintf(char *, size_t, char *, ...);
 int vfprintf(FILE *, char *, __builtin_va_list);
 int vprintf(char *, __builtin_va_list);
+int vsnprintf(char *, size_t, char *, __builtin_va_list);
+int vsprintf(char *, char *, __builtin_va_list);
 int puts(char *);
 int fputs(char *, FILE *);
 int fputc(int, FILE *);

@@ -1862,8 +1862,23 @@ pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
       } else {
         b.data_begin(g.name, g.is_export)
       }
-      let mut pos = 0
+      // Relocations may be produced out of order (e.g. decreasing array
+      // designators); the emission loop below walks offsets forwards.
+      let rels : Array[(Int, @sema.GlobalReloc)] = []
       for entry in g.relocs {
+        rels.push(entry)
+      }
+      for i in 1..<rels.length() {
+        let k = rels[i]
+        let mut j = i
+        while j > 0 && rels[j - 1].0 > k.0 {
+          rels[j] = rels[j - 1]
+          j = j - 1
+        }
+        rels[j] = k
+      }
+      let mut pos = 0
+      for entry in rels {
         let (off, r) = entry
         while pos < off {
           b.data_byte(
