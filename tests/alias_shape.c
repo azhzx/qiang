@@ -19,7 +19,24 @@ struct Tmp {
   enum { WFull, Wsb, Wub, Wsh, Wuh, Wsw, Wuw } width;
   int visit; unsigned int gcmbid;
 };
+
+typedef unsigned int uint;
+typedef struct { uint type:3; uint val:29; } Ref;
+typedef struct AClass AClass;
+struct AClass { Sym *type; int inmem; int align; uint size; int cls[2]; Ref ref[2]; };
+int acshape(void);
+int acshape(void) {
+  if (sizeof(struct AClass) != 40) return 1;
+  if (__builtin_offsetof(struct AClass, inmem) != 8) return 2;
+  if (__builtin_offsetof(struct AClass, align) != 12) return 3;
+  if (__builtin_offsetof(struct AClass, size) != 16) return 4;
+  if (__builtin_offsetof(struct AClass, cls) != 20) return 5;
+  if (__builtin_offsetof(struct AClass, ref) != 28) return 6;
+  return 0;
+}
+
 int main() {
+  { int r = acshape(); if (r) return 200 + r; }
   if (sizeof(struct Sym) != 8) return 1;
   if (sizeof(struct Alias) != 40) return 2;
   if (__builtin_offsetof(struct Alias, u) != 16) return 3;
