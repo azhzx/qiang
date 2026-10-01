@@ -82,7 +82,7 @@ pub fn collect_locals(s : TStmt, out : Array[(String, CType, Int)]) -> Unit {
       }
       collect_locals(b, out)
     }
-    KSSwitch(e, cases, d) => {
+    KSSwitch(e, cases, d, _) => {
       collect_expr_locals(e, out)
       for c in cases {
         collect_locals(c.1, out)
@@ -483,21 +483,22 @@ fn sw_collect_one(
   st : TStmt,
   cases : Array[(Int64, TStmt)],
   dflt : Array[TStmt?],
+  dfpos : Array[Int],
 ) -> Unit {
   match st.kind {
-    KSBlock(ss) => sw_collect(ss, cases, dflt)
+    KSBlock(ss) => sw_collect(ss, cases, dflt, dfpos)
     KSIf(_, a, b) => {
-      sw_collect_one(a, cases, dflt)
+      sw_collect_one(a, cases, dflt, dfpos)
       match b {
-        Some(x) => sw_collect_one(x, cases, dflt)
+        Some(x) => sw_collect_one(x, cases, dflt, dfpos)
         None => ()
       }
     }
-    KSWhile(_, b) => sw_collect_one(b, cases, dflt)
-    KSDoWhile(b, _) => sw_collect_one(b, cases, dflt)
-    KSFor(_, _, _, b) => sw_collect_one(b, cases, dflt)
-    KSLabel(_, b) => sw_collect_one(b, cases, dflt)
-    KSSwitch(_, _, _) => ()
+    KSWhile(_, b) => sw_collect_one(b, cases, dflt, dfpos)
+    KSDoWhile(b, _) => sw_collect_one(b, cases, dflt, dfpos)
+    KSFor(_, _, _, b) => sw_collect_one(b, cases, dflt, dfpos)
+    KSLabel(_, b) => sw_collect_one(b, cases, dflt, dfpos)
+    KSSwitch(_, _, _, _) => ()
     _ => ()
   }
 }
@@ -511,6 +512,7 @@ fn sw_collect(
   ss : Array[TStmt],
   cases : Array[(Int64, TStmt)],
   dflt : Array[TStmt?],
+  dfpos : Array[Int],
 ) -> Unit {
   let n = ss.length()
   let mut i = 0
@@ -526,14 +528,15 @@ fn sw_collect(
         let block : TStmt = { kind: KSBlock(blk), }
         if is_def {
           dflt[0] = Some(block)
+          dfpos[0] = cases.length()
         } else {
           for v in vals {
             cases.push((v, block))
           }
         }
-        sw_collect_one(inner, cases, dflt)
+        sw_collect_one(inner, cases, dflt, dfpos)
       }
-      _ => sw_collect_one(ss[i], cases, dflt)
+      _ => sw_collect_one(ss[i], cases, dflt, dfpos)
     }
     i = i + 1
   }
@@ -549,9 +552,10 @@ fn check_switch(ctrl : @front.Expr, body : @front.Stmt, ctx : Ctx) -> TStmt {
   }
   let cases : Array[(Int64, TStmt)] = []
   let dflt : Array[TStmt?] = [None]
-  sw_collect(stmts, cases, dflt)
+  let dfpos : Array[Int] = [cases.length()]
+  sw_collect(stmts, cases, dflt, dfpos)
   ctx.switch_depth = ctx.switch_depth - 1
-  { kind: KSSwitch(tc, cases, dflt[0]), }
+  { kind: KSSwitch(tc, cases, dflt[0], dfpos[0]), }
 }
 
 ///|

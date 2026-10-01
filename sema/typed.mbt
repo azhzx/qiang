@@ -48,7 +48,10 @@ pub(all) enum TStmtKind {
   KSLabel(String, TStmt)
   KSGoto(String)
   KSGotoPtr(TExpr)
-  KSSwitch(TExpr, Array[(Int64, TStmt)], TStmt?)
+  // The Int is how many cases precede the default label in the source. C
+  // lets a case fall through into the default, so the generated fall-through
+  // chain has to put the default back at its source position.
+  KSSwitch(TExpr, Array[(Int64, TStmt)], TStmt?, Int)
   // A case (or default) label still attached to its statement. The label runs
   // nothing, so code generation just emits `body`; it exists so a switch can
   // find cases nested anywhere in its body, which is what a Duff's device needs.

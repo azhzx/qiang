@@ -1397,7 +1397,7 @@ fn collect_labels(s : @sema.TStmt, out : Array[String]) -> Unit {
       }
       collect_labels(b, out)
     }
-    @sema.KSSwitch(_, cases, d) => {
+    @sema.KSSwitch(_, cases, d, _) => {
       for c in cases {
         collect_labels(c.1, out)
       }
@@ -1416,6 +1416,7 @@ fn Cg::gen_switch(
   e : @sema.TExpr,
   cases : Array[(Int64, @sema.TStmt)],
   dflt : @sema.TStmt?,
+  dfpos : Int,
 ) -> Unit {
   let end = c.new_block("switch.end")
   let v = c.gen_expr(e)
@@ -1462,7 +1463,16 @@ fn Cg::gen_switch(
     c.switch(blocks[i])
     c.gen_stmt(cases[i].1)
     if c.open {
-      let next = if i + 1 < n { blocks[i + 1] } else { end }
+      // A case falls into the next label in source order, and the default
+      // is one of those labels: `case 'h': default: ...` shares one body,
+      // so the fall-through has to be able to reach it.
+      let next = if dfpos == i + 1 {
+        dblk
+      } else if i + 1 < n {
+        blocks[i + 1]
+      } else {
+        end
+      }
       c.b.jmp(c.fid, next, [])
       c.open = false
     }
@@ -1472,7 +1482,8 @@ fn Cg::gen_switch(
       c.switch(dblk)
       c.gen_stmt(b)
       if c.open {
-        c.b.jmp(c.fid, end, [])
+        let next = if dfpos < n { blocks[dfpos] } else { end }
+        c.b.jmp(c.fid, next, [])
         c.open = false
       }
     }
@@ -1776,7 +1787,7 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
       }
       c.gen_stmt(b)
     }
-    @sema.KSSwitch(e, cases, dflt) => c.gen_switch(e, cases, dflt)
+    @sema.KSSwitch(e, cases, dflt, dfpos) => c.gen_switch(e, cases, dflt, dfpos)
     @sema.KSEmpty => ()
   }
 }
