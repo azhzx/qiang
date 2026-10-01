@@ -65,6 +65,7 @@ pub struct EnumItem {
 pub(all) enum Expr {
   EInt(String)
   EFloat(String)
+  EImag(String)
   EChar(String)
   EString(Array[String])
   EIdent(String)
@@ -192,6 +193,7 @@ pub(all) enum TokenKind {
   Keyword(String)
   IntLit(String)
   FloatLit(String)
+  ImagLit(String)
   StringLit(String)
   CharLit(String)
   Punct(String)

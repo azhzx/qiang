@@ -20,7 +20,7 @@ pub fn check_expr(@front.Expr, Ctx) -> TExpr
 
 pub fn check_stmt(@front.Stmt, Ctx) -> TStmt
 
-pub fn collect_locals(TStmt, Array[(String, CType)]) -> Unit
+pub fn collect_locals(TStmt, Array[(String, CType, Int)]) -> Unit
 
 pub fn common_type(CType, CType) -> CType
 
@@ -95,8 +95,9 @@ pub struct CheckedFunc {
   name : String
   ty : CType
   params : Array[(String, CType)]
-  locals : Array[(String, CType)]
+  locals : Array[(String, CType, Int)]
   is_vararg : Bool
+  is_export : Bool
   body : TStmt
 }
 
@@ -106,6 +107,8 @@ pub struct CheckedGlobal {
   init : Int64?
   bytes : Array[Byte]
   relocs : Array[(Int, GlobalReloc)]
+  is_export : Bool
+  align : Int
 }
 
 pub struct CheckedProgram {
@@ -125,11 +128,12 @@ pub struct Ctx {
   funcs : Array[CheckedFunc]
   globals : Array[CheckedGlobal]
   mut cur_params : Array[(String, CType)]
-  mut cur_locals : Array[(String, CType)]
+  mut cur_locals : Array[(String, CType, Int)]
   mut loop_depth : Int
   mut switch_depth : Int
   mut labels : Map[String, Bool]
   mut gotos : Array[String]
+  mut static_counter : Int
 }
 
 pub struct Diag {
@@ -208,6 +212,7 @@ pub(all) enum SymKind {
 
 pub struct Symbol {
   name : String
+  gname : String
   kind : SymKind
   ty : CType
   storage : Storage
@@ -265,8 +270,8 @@ pub(all) enum TStmtKind {
   KSGoto(String)
   KSGotoPtr(TExpr)
   KSSwitch(TExpr, Array[(Int64, TStmt)], TStmt?)
-  KSDecl(String, CType, TExpr?)
-  KSAggInit(String, CType, Array[(Int, TExpr)])
+  KSDecl(String, CType, TExpr?, Int)
+  KSAggInit(String, CType, Array[(Int, TExpr)], Int)
   KSEmpty
 }
 
