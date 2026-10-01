@@ -114,6 +114,7 @@ fn main {
         "qpcc: object emission failed: " +
         (match e {
           @util.QbeError::CompileError(m) => m
+          @util.QbeError::Ice(m) => "ICE: " + m
           _ => e.to_string()
         }),
       )
