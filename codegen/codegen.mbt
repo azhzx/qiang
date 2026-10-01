@@ -1032,7 +1032,14 @@ fn Cg::gen_bin(c : Cg, op : String, l : @sema.TExpr, r : @sema.TExpr) -> Int {
   let rt = @sema.decay(r.ty)
   let cls = wider(lt, rt)
   let fl = is_flt(lt) || is_flt(rt)
-  let uns = is_uns(lt) || is_uns(rt) || is_ptr_ty(lt) || is_ptr_ty(rt)
+  // For a shift only the left operand decides the result: `x >> n` is an
+  // arithmetic shift when x is signed and a logical one when it is not,
+  // whatever n is.  An unsigned count must not make a signed shift logical.
+  let uns = if op == "<<" || op == ">>" {
+    is_uns(lt) || is_ptr_ty(lt)
+  } else {
+    is_uns(lt) || is_uns(rt) || is_ptr_ty(lt) || is_ptr_ty(rt)
+  }
   if op == "&&" || op == "||" {
     let a = c.gen_expr(l)
     let av = c.coerce(a, cls_of(lt), cls)
