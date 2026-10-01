@@ -141,6 +141,13 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
         false,
       )
     }
+    @front.EImag(s) => {
+      // An imaginary literal is a _Complex double with a zero real part.
+      let v = parse_float_lit(s)
+      let real = mk_expr(TInt(0L), CInt(false), false)
+      let imag = mk_expr(TFlt(v, false), CDouble, false)
+      mk_expr(TCompoundLit([(0, real), (8, imag)]), CComplex(CDouble), false)
+    }
     @front.EString(parts) => {
       let mut joined = ""
       for p in parts {

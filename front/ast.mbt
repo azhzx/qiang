@@ -161,6 +161,7 @@ pub struct Stmt {
 pub(all) enum Expr {
   EInt(String)
   EFloat(String)
+  EImag(String)
   EChar(String)
   EString(Array[String])
   EIdent(String)

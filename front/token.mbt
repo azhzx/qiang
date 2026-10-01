@@ -12,6 +12,7 @@ pub(all) enum TokenKind {
   Keyword(String)
   IntLit(String)
   FloatLit(String)
+  ImagLit(String)
   StringLit(String)
   CharLit(String)
   Punct(String)
@@ -28,7 +29,7 @@ pub struct Token {
 ///|
 pub fn Token::text(self : Token) -> String {
   match self.kind {
-    Ident(s) | Keyword(s) | IntLit(s) | FloatLit(s) | Punct(s) => s
+    Ident(s) | Keyword(s) | IntLit(s) | FloatLit(s) | ImagLit(s) | Punct(s) => s
     StringLit(s) => s
     CharLit(s) => s
     Eof => "<eof>"

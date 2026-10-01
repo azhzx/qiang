@@ -324,6 +324,22 @@ fn is_num_char(c : Char) -> Bool {
 }
 
 ///|
+
+///|
+// Split a trailing imaginary suffix (i or j) from a numeric literal.
+fn split_imag(text : String) -> (String, Bool) {
+  let chars = text.to_array()
+  let n = chars.length()
+  if n >= 2 {
+    let c = chars[n - 1]
+    if c == 'i' || c == 'j' {
+      return (text.substring(start=0, end=n - 1), true)
+    }
+  }
+  (text, false)
+}
+
+///|
 fn classify_float(text : String) -> Bool {
   let chars = text.to_array()
   let hex = chars.length() >= 2 &&
@@ -394,9 +410,12 @@ fn Scanner::next(self : Scanner) -> Token {
       )
     }
     [c, ..] if is_digit(c) => {
-      let text = self.read_while(is_num_char)
+      let raw = self.read_while(is_num_char)
+      let (text, imag) = split_imag(raw)
       mk(
-        if classify_float(text) {
+        if imag {
+          ImagLit(text)
+        } else if classify_float(text) {
           FloatLit(text)
         } else {
           IntLit(text)
@@ -406,8 +425,9 @@ fn Scanner::next(self : Scanner) -> Token {
       )
     }
     ['.', c, ..] if is_digit(c) => {
-      let text = self.read_while(is_num_char)
-      mk(FloatLit(text), line, col)
+      let raw = self.read_while(is_num_char)
+      let (text, imag) = split_imag(raw)
+      mk(if imag { ImagLit(text) } else { FloatLit(text) }, line, col)
     }
     _ =>
       match punct_at(self.src) {

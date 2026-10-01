@@ -1482,6 +1482,10 @@ fn Parser::parse_primary_expr(self : Parser) -> Expr {
       self.pos = self.pos + 1
       EFloat(s)
     }
+    ImagLit(s) => {
+      self.pos = self.pos + 1
+      EImag(s)
+    }
     CharLit(s) => {
       self.pos = self.pos + 1
       EChar(s)
