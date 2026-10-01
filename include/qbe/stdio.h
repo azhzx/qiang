@@ -1,8 +1,11 @@
 #include <stddef.h>
 typedef struct _IO_FILE FILE;
-extern FILE *stdin;
-extern FILE *stdout;
-extern FILE *stderr;
+extern FILE *__stdinp;
+extern FILE *__stdoutp;
+extern FILE *__stderrp;
+#define stdin __stdinp
+#define stdout __stdoutp
+#define stderr __stderrp
 int printf(char *, ...);
 int fprintf(FILE *, char *, ...);
 int sprintf(char *, char *, ...);

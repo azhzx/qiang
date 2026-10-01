@@ -1664,7 +1664,7 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
       ret_of(ret)
     },
     pclasses,
-    true,
+    f.is_export,
   )
   c.fid = fid
   c.ret_ty = ret
@@ -1775,7 +1775,7 @@ pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
   for g in p.globals {
     let sz = size_of(g.ty, p.layouts)
     if g.relocs.length() > 0 {
-      b.data_begin(g.name, false)
+      b.data_begin(g.name, g.is_export)
       let mut pos = 0
       for entry in g.relocs {
         let (off, r) = entry
@@ -1809,7 +1809,7 @@ pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
       }
       b.data_end()
     } else if g.bytes.length() > 0 {
-      b.data_bytes(g.name, false, Bytes::from_array(g.bytes[:]))
+      b.data_bytes(g.name, g.is_export, Bytes::from_array(g.bytes[:]))
     } else {
       let v = match g.init {
         Some(x) => x
@@ -1822,9 +1822,9 @@ pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
           arr.push((0).to_byte())
           i = i + 1
         }
-        b.data_bytes(g.name, false, Bytes::from_array(arr[:]))
+        b.data_bytes(g.name, g.is_export, Bytes::from_array(arr[:]))
       } else {
-        b.data_bytes(g.name, false, le_bytes(v))
+        b.data_bytes(g.name, g.is_export, le_bytes(v))
       }
     }
   }

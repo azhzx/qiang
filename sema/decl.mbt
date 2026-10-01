@@ -22,7 +22,13 @@ pub fn build_type(d : @front.Declarator, base : CType, ctx : Ctx) -> CType {
       let ps : Array[CType] = []
       for p in params {
         let pb = declspec_to_type(p.spec, ctx)
-        ps.push(build_type(p.decl, pb, ctx))
+        let p1 = build_type(p.decl, pb, ctx)
+        let p1 = match p1 {
+          CFunc(_, _, _) => CPtr(p1)
+          CArray(e, _) => CPtr(e)
+          _ => p1
+        }
+        ps.push(p1)
       }
       build_type(inner, CFunc(base, ps, va), ctx)
     }

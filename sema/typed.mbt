@@ -72,6 +72,7 @@ pub struct CheckedGlobal {
   init : Int64?
   bytes : Array[Byte]
   relocs : Array[(Int, GlobalReloc)]
+  is_export : Bool
 }
 
 ///|
@@ -81,5 +82,6 @@ pub struct CheckedFunc {
   params : Array[(String, CType)]
   locals : Array[(String, CType)]
   is_vararg : Bool
+  is_export : Bool
   body : TStmt
 }

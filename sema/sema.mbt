@@ -341,7 +341,15 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
               let has_init = idecl.init is Some(_)
               let is_extern = storage_of(spec) is StExtern
               if !(is_extern && !has_init) {
-                ctx.globals.push({ name: n, ty, init, bytes, relocs, })
+                let is_export = !(storage_of(spec) is StStatic)
+                ctx.globals.push({
+                  name: n,
+                  ty,
+                  init,
+                  bytes,
+                  relocs,
+                  is_export,
+                })
               }
             }
           None => ()
@@ -398,7 +406,13 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
       }
       for pd in func_params(decl) {
         let pb = declspec_to_type(pd.spec, ctx)
-        let pty = build_type(pd.decl, pb, ctx)
+        let pty0 = build_type(pd.decl, pb, ctx)
+        // Parameters of function or array type are adjusted to pointers.
+        let pty = match pty0 {
+          CFunc(_, _, _) => CPtr(pty0)
+          CArray(e, _) => CPtr(e)
+          _ => pty0
+        }
         match decl_name(pd.decl) {
           Some(pn) => {
             ctx.cur_params.push((pn, pty))
@@ -431,6 +445,7 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
         params: ctx.cur_params,
         locals: ctx.cur_locals,
         is_vararg,
+        is_export: !(storage_of(spec) is StStatic),
         body: tb,
       })
     }
