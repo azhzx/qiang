@@ -271,6 +271,61 @@ fn Cg::alloc_slot(c : Cg, size : Int) -> Int {
 }
 
 ///|
+// Write a bitfield: read the containing unit, clear the field's bits and
+// place the new value.
+fn Cg::store_bitfield(
+  c : Cg,
+  ty : @sema.CType,
+  value : Int,
+  addr : Int,
+  bo : Int,
+  bw : Int,
+) -> Unit {
+  let cls = cls_of(ty)
+  let old = c.load_scalar(ty, addr)
+  let fmask = (1L << bw) - 1L
+  let nmask = -1L ^ (fmask << bo)
+  let cleared = c.b.arith(c.fid, @types.And, cls, old, c.b.iconst(c.fid, nmask))
+  let masked = c.b.arith(
+    c.fid,
+    @types.And,
+    cls,
+    value,
+    c.b.iconst(c.fid, fmask),
+  )
+  let placed = c.b.arith(
+    c.fid,
+    @types.Shl,
+    cls,
+    masked,
+    c.b.iconst(c.fid, bo.to_int64()),
+  )
+  let nv = c.b.arith(c.fid, @types.Or, cls, cleared, placed)
+  c.store_scalar(ty, nv, addr)
+}
+
+///|
+// Clear `size` bytes at `addr` with 8-byte stores.
+fn Cg::zero_mem(c : Cg, addr : Int, size : Int) -> Unit {
+  let mut off = 0
+  while off < size {
+    let a = if off == 0 {
+      addr
+    } else {
+      c.b.arith(
+        c.fid,
+        @types.Add,
+        @types.Kl,
+        addr,
+        c.b.iconst(c.fid, off.to_int64()),
+      )
+    }
+    c.store_scalar(@sema.CLong(false), c.b.iconst(c.fid, 0L), a)
+    off = off + 8
+  }
+}
+
+///|
 // Allocate a stack slot with an explicit alignment (C _Alignas).
 fn Cg::alloc_slot_al(c : Cg, size : Int, align : Int) -> Int {
   let a = if align < 8 { 8 } else if align <= 16 { align } else { 16 }
@@ -391,8 +446,11 @@ fn Cg::gen_addr(c : Cg, e : @sema.TExpr) -> Int {
     @sema.TCompoundLit(stores) => {
       let raw = size_of(e.ty, c.layouts)
       let slot = c.alloc_slot(raw)
+      // C zero-fills members an initializer list leaves out, so clear the
+      // whole object before applying the explicit stores.
+      c.zero_mem(slot, raw)
       for entry in stores {
-        let (off, x) = entry
+        let (off, x, bo, bw) = entry
         let addr = if off == 0 {
           slot
         } else {
@@ -406,7 +464,11 @@ fn Cg::gen_addr(c : Cg, e : @sema.TExpr) -> Int {
         }
         let v = c.gen_expr(x)
         let vv = c.coerce(v, cls_of(x.ty), cls_of(x.ty))
-        c.store_scalar(x.ty, vv, addr)
+        if bw > 0 {
+          c.store_bitfield(x.ty, vv, addr, bo, bw)
+        } else {
+          c.store_scalar(x.ty, vv, addr)
+        }
       }
       slot
     }
@@ -1489,8 +1551,9 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
         Some(x) => x
         None => abort("qpcc: unbound local " + name)
       }
+      c.zero_mem(base, size_of(ty, c.layouts))
       for entry in items {
-        let (off, e) = entry
+        let (off, e, bo, bw) = entry
         let addr = if off == 0 {
           base
         } else {
@@ -1504,7 +1567,11 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
         }
         let v = c.gen_expr(e)
         let vv = c.coerce(v, cls_of(e.ty), cls_of(e.ty))
-        c.store_scalar(e.ty, vv, addr)
+        if bw > 0 {
+          c.store_bitfield(e.ty, vv, addr, bo, bw)
+        } else {
+          c.store_scalar(e.ty, vv, addr)
+        }
       }
       let _ = ty
     }

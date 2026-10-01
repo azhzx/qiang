@@ -304,7 +304,7 @@ fn check_local_decl(
                 out.push({ kind: KSDecl(n, ty, Some(te), al), })
               }
               Some(@front.IList(_)) => {
-                let stores : Array[(Int, TExpr)] = []
+                let stores : Array[(Int, TExpr, Int, Int)] = []
                 match idecl.init {
                   Some(init) => check_init_into(init, ty, 0, stores, ctx)
                   None => ()
@@ -333,13 +333,21 @@ fn check_init_into(
   init : @front.Initializer,
   ty : CType,
   base_off : Int,
-  stores : Array[(Int, TExpr)],
+  stores : Array[(Int, TExpr, Int, Int)],
   ctx : Ctx,
 ) -> Unit {
   match init {
     @front.IExpr(e) => {
       let te = check_expr(e, ctx)
-      stores.push((base_off, te))
+      // The element may need narrowing (e.g. the bytes of a char array
+      // compound literal); store it already converted so the element size is
+      // used when writing.
+      let v = if is_scalar(ty) && !ty_eq(te.ty, ty) {
+        mk_expr(TCast(te), ty, false)
+      } else {
+        te
+      }
+      stores.push((base_off, v, 0, 0))
     }
     @front.IList(items) =>
       match ty {
@@ -363,21 +371,37 @@ fn check_init_into(
           let lay = ctx.layouts[i]
           let mut midx = 0
           for it in items {
-            let (moff, mty) = if it.designators.length() > 0 {
+            let (moff, mty, mbo, mbw) = if it.designators.length() > 0 {
               match it.designators[0] {
                 @front.DField(n) =>
                   match field_of(lay, n) {
-                    Some(f) => (f.offset, f.ty)
-                    None => (0, CInt(false))
+                    Some(f) => (f.offset, f.ty, f.bit_offset, f.bit_width)
+                    None => (0, CInt(false), 0, 0)
                   }
-                _ => (0, CInt(false))
+                _ => (0, CInt(false), 0, 0)
               }
             } else if midx < lay.fields.length() {
-              (lay.fields[midx].offset, lay.fields[midx].ty)
+              let f = lay.fields[midx]
+              (f.offset, f.ty, f.bit_offset, f.bit_width)
             } else {
-              (0, CInt(false))
+              (0, CInt(false), 0, 0)
             }
-            check_init_into(it.init, mty, base_off + moff, stores, ctx)
+            if mbw > 0 {
+              match it.init {
+                @front.IExpr(e) => {
+                  let te = check_expr(e, ctx)
+                  let v = if is_scalar(mty) && !ty_eq(te.ty, mty) {
+                    mk_expr(TCast(te), mty, false)
+                  } else {
+                    te
+                  }
+                  stores.push((base_off + moff, v, mbo, mbw))
+                }
+                _ => check_init_into(it.init, mty, base_off + moff, stores, ctx)
+              }
+            } else {
+              check_init_into(it.init, mty, base_off + moff, stores, ctx)
+            }
             midx = midx + 1
           }
         }

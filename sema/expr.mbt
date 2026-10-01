@@ -151,7 +151,11 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
       let v = parse_float_lit(s)
       let real = mk_expr(TFlt(0.0, is_f), elem, false)
       let imag = mk_expr(TFlt(v, is_f), elem, false)
-      mk_expr(TCompoundLit([(0, real), (esz, imag)]), CComplex(elem), false)
+      mk_expr(
+        TCompoundLit([(0, real, 0, 0), (esz, imag, 0, 0)]),
+        CComplex(elem),
+        false,
+      )
     }
     @front.EString(parts) => {
       let mut joined = ""
@@ -339,7 +343,7 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
     @front.ECompound(spec, d, init) => {
       let base = declspec_to_type(spec, ctx)
       let ty = build_type(d, base, ctx)
-      let stores : Array[(Int, TExpr)] = []
+      let stores : Array[(Int, TExpr, Int, Int)] = []
       check_init_into(init, ty, 0, stores, ctx)
       mk_expr(TCompoundLit(stores), ty, true)
     }

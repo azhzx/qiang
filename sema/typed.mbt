@@ -22,7 +22,7 @@ pub(all) enum TExprKind {
   TAlignof(Int)
   TSizeofVLA(TExpr)
   TStmtExpr(Array[TStmt])
-  TCompoundLit(Array[(Int, TExpr)])
+  TCompoundLit(Array[(Int, TExpr, Int, Int)])
   TVaArg(TExpr)
   TUnsupported(String)
 }
@@ -50,7 +50,7 @@ pub(all) enum TStmtKind {
   KSGotoPtr(TExpr)
   KSSwitch(TExpr, Array[(Int64, TStmt)], TStmt?)
   KSDecl(String, CType, TExpr?, Int)
-  KSAggInit(String, CType, Array[(Int, TExpr)], Int)
+  KSAggInit(String, CType, Array[(Int, TExpr, Int, Int)], Int)
   KSEmpty
 }
 
