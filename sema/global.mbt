@@ -48,7 +48,7 @@ fn put_str(bytes : Array[Byte], off : Int, s : String) -> Int {
 }
 
 ///|
-fn ptr_reloc(e : @front.Expr, ctx : Ctx) -> GlobalReloc? {
+fn ptr_reloc(e : @front.Expr, elem : CType, ctx : Ctx) -> GlobalReloc? {
   match e {
     @front.EString(parts) => {
       let mut joined = ""
@@ -63,10 +63,22 @@ fn ptr_reloc(e : @front.Expr, ctx : Ctx) -> GlobalReloc? {
     @front.EUnary("&", x) =>
       match x {
         @front.EIdent(n) => Some(RGlobal(n, 0))
+        @front.EIndex(b, i) =>
+          match b {
+            @front.EIdent(n) =>
+              Some(
+                RGlobal(
+                  n,
+                  const_eval_int(i, ctx).to_int() *
+                  size_of_ty(elem, ctx.layouts),
+                ),
+              )
+            _ => None
+          }
         _ => None
       }
     @front.EBinary("+", l, r) =>
-      match (ptr_reloc(l, ctx), r) {
+      match (ptr_reloc(l, elem, ctx), r) {
         (Some(RGlobal(n, k)), @front.EInt(s)) =>
           if is_const_expr(r, ctx) {
             Some(RGlobal(n, k + const_eval_int(r, ctx).to_int()))
@@ -82,13 +94,14 @@ fn ptr_reloc(e : @front.Expr, ctx : Ctx) -> GlobalReloc? {
 ///|
 fn encode_ptr(
   e : @front.Expr,
+  elem : CType,
   off : Int,
   bytes : Array[Byte],
   relocs : Array[(Int, GlobalReloc)],
   ctx : Ctx,
 ) -> Unit {
   ensure_len(bytes, off + 8)
-  match ptr_reloc(e, ctx) {
+  match ptr_reloc(e, elem, ctx) {
     Some(r) => relocs.push((off, r))
     None => ()
   }
@@ -107,7 +120,7 @@ pub fn encode_global_init(
   match init {
     @front.IExpr(e) =>
       match ty {
-        CPtr(_) => encode_ptr(e, off, bytes, relocs, ctx)
+        CPtr(inner) => encode_ptr(e, inner, off, bytes, relocs, ctx)
         CArray(el, n) =>
           match e {
             @front.EString(parts) => {
