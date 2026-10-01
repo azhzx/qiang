@@ -142,11 +142,16 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
       )
     }
     @front.EImag(s) => {
-      // An imaginary literal is a _Complex double with a zero real part.
+      // An imaginary literal is a _Complex value with a zero real part; the
+      // f/F suffix selects the single-precision element type.
+      let last = s.to_array()[s.length() - 1]
+      let is_f = last == 'f' || last == 'F'
+      let elem = if is_f { CFloat } else { CDouble }
+      let esz = if is_f { 4 } else { 8 }
       let v = parse_float_lit(s)
-      let real = mk_expr(TInt(0L), CInt(false), false)
-      let imag = mk_expr(TFlt(v, false), CDouble, false)
-      mk_expr(TCompoundLit([(0, real), (8, imag)]), CComplex(CDouble), false)
+      let real = mk_expr(TFlt(0.0, is_f), elem, false)
+      let imag = mk_expr(TFlt(v, is_f), elem, false)
+      mk_expr(TCompoundLit([(0, real), (esz, imag)]), CComplex(elem), false)
     }
     @front.EString(parts) => {
       let mut joined = ""
@@ -457,6 +462,11 @@ fn check_unary(op : String, x : @front.Expr, ctx : Ctx) -> TExpr {
         }
       }
     "!" => mk_expr(TUn(op, tx), CInt(false), false)
+    "__real__" | "__imag__" =>
+      match decay(tx.ty) {
+        CComplex(el) => mk_expr(TUn(op, tx), el, false)
+        _ => tx
+      }
     "-" | "~" => mk_expr(TUn(op, tx), tx.ty, false)
     "++" | "--" | "pre++" | "pre--" | "post++" | "post--" =>
       mk_expr(TUn(op, tx), tx.ty, false)

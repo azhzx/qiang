@@ -1279,6 +1279,14 @@ fn Parser::parse_unary_expr(self : Parser) -> Expr {
       let n = self.expect_ident()
       EUnary("&&", EIdent(n))
     }
+    Keyword("__real__") | Keyword("__imag__") => {
+      let k = match self.peek().kind {
+        Keyword(k) => k
+        _ => ""
+      }
+      self.pos = self.pos + 1
+      EUnary(k, self.parse_cast_expr())
+    }
     Keyword("sizeof") => {
       self.pos = self.pos + 1
       if self.at_punct("(") {

@@ -1202,7 +1202,55 @@ fn cmp_op(op : String, cls : @types.Class, uns : Bool, fl : Bool) -> @types.Op {
 }
 
 ///|
+
+///|
+// Unary operators on a _Complex value.
+fn Cg::gen_complex_un(c : Cg, op : String, x : @sema.TExpr) -> Int {
+  let elem = elem_of(x.ty)
+  let cls = cls_of(elem)
+  let esz = size_of(elem, c.layouts)
+  let (ar, ai) = c.complex_operand(x, elem)
+  if op == "+" {
+    return c.gen_expr(x)
+  }
+  let nr = c.b.arith(c.fid, @types.Sub, cls, c.zero_elem(elem), ar)
+  let ni = c.b.arith(c.fid, @types.Sub, cls, c.zero_elem(elem), ai)
+  let slot = c.alloc_slot(esz * 2)
+  c.store_scalar(elem, nr, slot)
+  let off = c.b.arith(
+    c.fid,
+    @types.Add,
+    @types.Kl,
+    slot,
+    c.b.iconst(c.fid, esz.to_int64()),
+  )
+  c.store_scalar(elem, ni, off)
+  slot
+}
+
+///|
 fn Cg::gen_un(c : Cg, op : String, x : @sema.TExpr) -> Int {
+  if op == "__real__" || op == "__imag__" {
+    if is_complex_ty(x.ty) {
+      let elem = elem_of(x.ty)
+      let addr = c.gen_expr(x)
+      if op == "__real__" {
+        return c.load_scalar(elem, addr)
+      }
+      let off = c.b.arith(
+        c.fid,
+        @types.Add,
+        @types.Kl,
+        addr,
+        c.b.iconst(c.fid, size_of(elem, c.layouts).to_int64()),
+      )
+      return c.load_scalar(elem, off)
+    }
+    return c.gen_expr(x)
+  }
+  if is_complex_ty(x.ty) {
+    return c.gen_complex_un(op, x)
+  }
   match op {
     "-" => {
       let cls = cls_of(x.ty)
