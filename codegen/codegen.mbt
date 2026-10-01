@@ -806,11 +806,13 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
       c.b.jnz(c.fid, cv, then_b, [], else_b, [])
       c.open = false
       c.switch(then_b)
-      let tv = c.gen_expr(t)
+      // Usual arithmetic conversions: each arm must reach the join at the
+      // common type, otherwise a narrow arm is read at the wrong width.
+      let tv = c.convert(c.gen_expr(t), t.ty, e.ty)
       c.b.jmp(c.fid, join, [tv])
       c.open = false
       c.switch(else_b)
-      let fv = c.gen_expr(f)
+      let fv = c.convert(c.gen_expr(f), f.ty, e.ty)
       c.b.jmp(c.fid, join, [fv])
       c.open = false
       c.switch(join)
