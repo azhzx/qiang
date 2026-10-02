@@ -1991,6 +1991,17 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
     let (n, t, al) = entry
     let raw = size_of(t, c.layouts)
     let slot = c.alloc_slot_al(raw, al)
+    // A block-scope aggregate is indeterminate until it is stored to, but a
+    // bitfield read-modify-write loads the containing unit before any store.
+    // Promoting that slot then leaves a temporary with no definition, and
+    // reference QBE rejects the result as an undefined SSA use. Zeroing the
+    // slot first is a safe refinement of the indeterminate value and gives
+    // every later load a definition.
+    match t {
+      @sema.CStruct(_) | @sema.CUnion(_) | @sema.CArray(_, _) =>
+        c.zero_mem(slot, raw)
+      _ => ()
+    }
     c.locals.set(n, slot)
     c.local_ty.set(n, t)
   }
