@@ -508,7 +508,12 @@ fn check_call(
           name: n,
           gname: "",
           kind: SymFunc,
-          ty: CFunc(CInt(true), [], true),
+          // An implicitly declared function is unprototyped, not variadic:
+          // its arguments still use the standard (register) ABI, and only
+          // the default argument promotions apply. Marking it variadic made
+          // codegen push every argument on the stack, so a libc callee read
+          // a stale w0 (this broke isblank() in parse.c).
+          ty: CFunc(CInt(true), [], false),
           storage: StNone,
           value: 0L,
         })
@@ -561,7 +566,7 @@ fn check_call(
     let te = check_expr(a, ctx)
     // Arguments that have no declared parameter get the default argument
     // promotions: arrays and functions decay, and float widens to double.
-    let v = if va && argi >= params.length() {
+    let v = if (va || params.length() == 0) && argi >= params.length() {
       let dt = decay(te.ty)
       if !ty_eq(dt, te.ty) {
         mk_expr(TCast(te), dt, false)
