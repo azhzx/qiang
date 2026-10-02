@@ -17,11 +17,16 @@ fail=0
 for c in "$here"/tests/*.c; do
   base=$(basename "$c" .c)
   clang "$c" -o "$tmp/$base.ref"
+  qpcc_src=$c
+  if [ "$base" = "stdlib_abs" ]; then
+    clang -E -P -nostdinc -I "$here/include/qbe" "$c" > "$tmp/$base.i"
+    qpcc_src=$tmp/$base.i
+  fi
   set +e
   "$tmp/$base.ref" >"$tmp/$base.ref.out" 2>&1
   refcode=$?
   set -e
-  if ! "$exe" "$c" -o "$tmp/$base.o" 2>"$tmp/$base.err"; then
+  if ! "$exe" "$qpcc_src" -o "$tmp/$base.o" 2>"$tmp/$base.err"; then
     echo "FAIL $base (qpcc compile)"
     fail=$((fail + 1))
     continue

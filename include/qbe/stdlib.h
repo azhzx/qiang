@@ -5,6 +5,7 @@ void *realloc(void *, size_t);
 void free(void *);
 void exit(int);
 void abort(void);
+int abs(int);
 int atoi(char *);
 long atol(char *);
 long strtol(char *, char **, int);

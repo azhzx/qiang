@@ -128,8 +128,57 @@ fn Cg::one_of(c : Cg, cls : @types.Class) -> Int {
 }
 
 ///|
-fn Cg::norm_bool(c : Cg, v : Int) -> Int {
-  c.b.cmp(c.fid, @types.Cnew, @types.Kw, v, c.b.iconst(c.fid, 0L))
+fn Cg::truthy(c : Cg, ty : @sema.CType, v : Int) -> Int {
+  match ty {
+    @sema.CComplex(elem) => {
+      let cls = cls_of(elem)
+      let op = if cls == @types.Ks { @types.Cnes } else { @types.Cned }
+      let then_b = c.new_block("complex.truthy")
+      let check_imag = c.new_block("complex.truthy.imag")
+      let else_b = c.new_block("complex.truthy.false")
+      let join = c.new_block("complex.truthy.join")
+      let p = c.b.block_param(c.fid, join, @types.Kw)
+      let re = c.load_scalar(elem, v)
+      let re_nonzero = c.b.cmp(c.fid, op, cls, re, c.zero_of(cls))
+      c.b.jnz(c.fid, re_nonzero, then_b, [], check_imag, [])
+      c.open = false
+      c.switch(check_imag)
+      let off = c.b.arith(
+        c.fid,
+        @types.Add,
+        @types.Kl,
+        v,
+        c.b.iconst(c.fid, size_of(elem, c.layouts).to_int64()),
+      )
+      let im = c.load_scalar(elem, off)
+      let im_nonzero = c.b.cmp(c.fid, op, cls, im, c.zero_of(cls))
+      c.b.jnz(c.fid, im_nonzero, then_b, [], else_b, [])
+      c.open = false
+      c.switch(then_b)
+      let one = c.b.iconst(c.fid, 1L)
+      c.b.jmp(c.fid, join, [one])
+      c.open = false
+      c.switch(else_b)
+      let zero = c.b.iconst(c.fid, 0L)
+      c.b.jmp(c.fid, join, [zero])
+      c.open = false
+      c.switch(join)
+      p
+    }
+    _ => {
+      let cls = cls_of(ty)
+      let op = if cls == @types.Ks {
+        @types.Cnes
+      } else if cls == @types.Kd {
+        @types.Cned
+      } else if cls == @types.Kl {
+        @types.Cnel
+      } else {
+        @types.Cnew
+      }
+      c.b.cmp(c.fid, op, cls, v, c.zero_of(cls))
+    }
+  }
 }
 
 ///|
@@ -243,13 +292,13 @@ fn Cg::store_scalar(c : Cg, ty : @sema.CType, val : Int, addr : Int) -> Unit {
       if n <= 32 {
         c.b.store(c.fid, @types.Storew, @types.Kw, val, addr)
       } else {
-        c.b.store(c.fid, @types.Storel, @types.Kl, val, addr)
+        c.b.store(c.fid, @types.Storel, @types.Kw, val, addr)
       }
     @sema.CLong(_) | @sema.CLongLong(_) | @sema.CPtr(_) =>
-      c.b.store(c.fid, @types.Storel, @types.Kl, val, addr)
-    @sema.CFloat => c.b.store(c.fid, @types.Stores, @types.Ks, val, addr)
+      c.b.store(c.fid, @types.Storel, @types.Kw, val, addr)
+    @sema.CFloat => c.b.store(c.fid, @types.Stores, @types.Kw, val, addr)
     @sema.CDouble | @sema.CLongDouble =>
-      c.b.store(c.fid, @types.Stored, @types.Kd, val, addr)
+      c.b.store(c.fid, @types.Stored, @types.Kw, val, addr)
     _ => ()
   }
 }
@@ -638,7 +687,7 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
       let _ = c.gen_expr(a)
       c.gen_expr(b)
     }
-    @sema.TBin(op, l, r) => c.gen_bin(op, l, r)
+    @sema.TBin(op, l, r) => c.gen_bin(op, l, r, e.ty)
     @sema.TUn(op, x) => c.gen_un(op, x)
     @sema.TCall(name, callee, args) => {
       if name == "__c11_atomic_load" ||
@@ -803,17 +852,16 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
       let join = c.new_block("cond.join")
       let p = c.b.block_param(c.fid, join, cls_of(e.ty))
       let cv = c.gen_expr(cond)
-      c.b.jnz(c.fid, cv, then_b, [], else_b, [])
+      let truth = c.truthy(cond.ty, cv)
+      c.b.jnz(c.fid, truth, then_b, [], else_b, [])
       c.open = false
       c.switch(then_b)
-      // Usual arithmetic conversions: each arm must reach the join at the
-      // common type, otherwise a narrow arm is read at the wrong width.
-      let tv = c.convert(c.gen_expr(t), t.ty, e.ty)
-      c.b.jmp(c.fid, join, [tv])
+      let tv = c.gen_expr(t)
+      c.b.jmp(c.fid, join, [c.convert(tv, t.ty, e.ty)])
       c.open = false
       c.switch(else_b)
-      let fv = c.convert(c.gen_expr(f), f.ty, e.ty)
-      c.b.jmp(c.fid, join, [fv])
+      let fv = c.gen_expr(f)
+      c.b.jmp(c.fid, join, [c.convert(fv, f.ty, e.ty)])
       c.open = false
       c.switch(join)
       p
@@ -1026,7 +1074,37 @@ fn Cg::gen_complex_bin(
 }
 
 ///|
-fn Cg::gen_bin(c : Cg, op : String, l : @sema.TExpr, r : @sema.TExpr) -> Int {
+fn Cg::gen_bin(
+  c : Cg,
+  op : String,
+  l : @sema.TExpr,
+  r : @sema.TExpr,
+  result_ty : @sema.CType,
+) -> Int {
+  if op == "&&" || op == "||" {
+    let true_b = c.new_block("logic.true")
+    let false_b = c.new_block("logic.false")
+    let join = c.new_block("logic.join")
+    let result = c.b.block_param(c.fid, join, @types.Kw)
+    let rhs = c.new_block(if op == "&&" { "and.rhs" } else { "or.rhs" })
+    if op == "&&" {
+      c.gen_cond_branch(l, rhs, false_b)
+    } else {
+      c.gen_cond_branch(l, true_b, rhs)
+    }
+    c.open = false
+    c.switch(rhs)
+    c.gen_cond_branch(r, true_b, false_b)
+    c.open = false
+    c.switch(true_b)
+    c.b.jmp(c.fid, join, [c.b.iconst(c.fid, 1L)])
+    c.open = false
+    c.switch(false_b)
+    c.b.jmp(c.fid, join, [c.b.iconst(c.fid, 0L)])
+    c.open = false
+    c.switch(join)
+    return result
+  }
   if is_complex_ty(l.ty) || is_complex_ty(r.ty) {
     return c.gen_complex_bin(op, l, r)
   }
@@ -1034,37 +1112,24 @@ fn Cg::gen_bin(c : Cg, op : String, l : @sema.TExpr, r : @sema.TExpr) -> Int {
   let rt = @sema.decay(r.ty)
   let cls = wider(lt, rt)
   let fl = is_flt(lt) || is_flt(rt)
-  // For a shift only the left operand decides the result: `x >> n` is an
-  // arithmetic shift when x is signed and a logical one when it is not,
-  // whatever n is.  An unsigned count must not make a signed shift logical.
-  let uns = if op == "<<" || op == ">>" {
-    is_uns(lt) || is_ptr_ty(lt)
-  } else {
-    is_uns(lt) || is_uns(rt) || is_ptr_ty(lt) || is_ptr_ty(rt)
-  }
-  if op == "&&" || op == "||" {
-    let a = c.gen_expr(l)
-    let av = c.coerce(a, cls_of(lt), cls)
-    let b = c.gen_expr(r)
-    let bv = c.coerce(b, cls_of(rt), cls)
-    let z = c.zero_of(cls)
-    let nz = if cls == @types.Ks || cls == @types.Kd {
-      @types.Cnes
-    } else if cls == @types.Kl {
-      @types.Cnel
-    } else {
-      @types.Cnew
-    }
-    let ca = c.b.cmp(c.fid, nz, cls, av, z)
-    let cb = c.b.cmp(c.fid, nz, cls, bv, z)
-    let o = if op == "&&" { @types.And } else { @types.Or }
-    c.b.arith(c.fid, o, @types.Kw, ca, cb)
-  } else if is_cmp(op) {
+  let uns = is_uns(lt) || is_uns(rt) || is_ptr_ty(lt) || is_ptr_ty(rt)
+  if is_cmp(op) {
     let a = c.gen_expr(l)
     let av = c.coerce(a, cls_of(lt), cls)
     let b = c.gen_expr(r)
     let bv = c.coerce(b, cls_of(rt), cls)
     c.b.cmp(c.fid, cmp_op(op, cls, uns, fl), cls, av, bv)
+  } else if op == "<<" || op == ">>" {
+    let shift_cls = cls_of(result_ty)
+    let a = c.coerce(c.gen_expr(l), cls_of(lt), shift_cls)
+    let b = c.coerce(c.gen_expr(r), cls_of(rt), shift_cls)
+    c.b.arith(
+      c.fid,
+      arith_op(op, shift_cls, is_uns(result_ty)),
+      shift_cls,
+      a,
+      b,
+    )
   } else if (op == "+" || op == "-") && !fl {
     match (lt, rt) {
       (@sema.CPtr(el), _) =>
@@ -1130,7 +1195,7 @@ fn Cg::gen_bin(c : Cg, op : String, l : @sema.TExpr, r : @sema.TExpr) -> Int {
 ///|
 fn Cg::truncate(c : Cg, ty : @sema.CType, v : Int) -> Int {
   match ty {
-    @sema.CBool => c.norm_bool(v)
+    @sema.CBool => v
     @sema.CChar(sgn) =>
       if sgn {
         let t = c.b.arith(
@@ -1163,6 +1228,10 @@ fn Cg::truncate(c : Cg, ty : @sema.CType, v : Int) -> Int {
 
 ///|
 fn Cg::convert(c : Cg, v : Int, from : @sema.CType, to : @sema.CType) -> Int {
+  match to {
+    @sema.CBool => return c.truthy(from, v)
+    _ => ()
+  }
   if is_complex_ty(from) && !is_complex_ty(to) {
     let elem = elem_of(from)
     return c.convert(c.load_scalar(elem, v), elem, to)
@@ -1535,7 +1604,8 @@ fn Cg::gen_cond_branch(c : Cg, e : @sema.TExpr, t : Int, f : Int) -> Unit {
     }
     _ => {
       let v = c.gen_expr(e)
-      c.b.jnz(c.fid, v, t, [], f, [])
+      let truth = c.truthy(e.ty, v)
+      c.b.jnz(c.fid, truth, t, [], f, [])
       c.open = false
     }
   }
@@ -1717,10 +1787,7 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
       c.open = false
       c.switch(cb)
       match cond {
-        Some(ce) => {
-          let cv = c.gen_expr(ce)
-          c.b.jnz(c.fid, cv, bb, [], end, [])
-        }
+        Some(ce) => c.gen_cond_branch(ce, bb, end)
         None => c.b.jmp(c.fid, bb, [])
       }
       c.open = false
@@ -1907,7 +1974,7 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
               c.b.iconst(c.fid, (k * 8).to_int64()),
             )
           }
-          c.b.store(c.fid, @types.Storel, @types.Kl, pv, addr)
+          c.b.store(c.fid, @types.Storel, @types.Kw, pv, addr)
         }
       }
     } else {

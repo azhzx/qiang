@@ -269,7 +269,8 @@ pub(all) enum TStmtKind {
   KSLabel(String, TStmt)
   KSGoto(String)
   KSGotoPtr(TExpr)
-  KSSwitch(TExpr, Array[(Int64, TStmt)], TStmt?)
+  KSSwitch(TExpr, Array[(Int64, TStmt)], TStmt?, Int)
+  KSCaseMark(Array[Int64], Bool, TStmt)
   KSDecl(String, CType, TExpr?, Int)
   KSAggInit(String, CType, Array[(Int, TExpr, Int, Int)], Int)
   KSEmpty

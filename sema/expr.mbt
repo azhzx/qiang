@@ -40,6 +40,14 @@ fn promote_arith(a : CType, b : CType) -> CType {
 }
 
 ///|
+fn promote_shift_operand(t : CType) -> CType {
+  match t {
+    CBool | CChar(_) | CShort(_) | CEnum(_) => CInt(true)
+    _ => t
+  }
+}
+
+///|
 fn is_func_ty(t : CType) -> Bool {
   match t {
     CFunc(_, _, _) => true
@@ -422,6 +430,8 @@ fn check_binary(
     op == "||"
   if cmp {
     mk_expr(TBin(op, tl, tr), CInt(false), false)
+  } else if op == "<<" || op == ">>" {
+    mk_expr(TBin(op, tl, tr), promote_shift_operand(decay(tl.ty)), false)
   } else {
     let lt = decay(tl.ty)
     let rt = decay(tr.ty)
