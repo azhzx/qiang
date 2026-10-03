@@ -577,9 +577,49 @@ fn sw_collect(
 }
 
 ///|
+// C2y named loops: the innermost enclosing breakable/continuable construct
+// whose label is `l`, as a frame-skip count (0 == innermost).
+fn find_label(stack : Array[Array[String]], l : String) -> Int? {
+  let mut i = stack.length()
+  while i > 0 {
+    i = i - 1
+    for x in stack[i] {
+      if x == l {
+        return Some(stack.length() - 1 - i)
+      }
+    }
+  }
+  None
+}
+
+///|
+// Consume the label a preceding `label:` left for the next loop/switch.
+fn take_labels(ctx : Ctx) -> Array[String] {
+  let ls = ctx.label_pending.copy()
+  ctx.label_pending.clear()
+  ls
+}
+
+///|
+// Does this statement (possibly through a chain of labels) name a loop or
+// switch? N3355 names only the immediate syntactic operand.
+fn names_loop_or_switch(s : @front.Stmt) -> Bool {
+  match s.kind {
+    @front.SFor(_, _, _, _)
+    | @front.SWhile(_, _)
+    | @front.SDoWhile(_, _)
+    | @front.SSwitch(_, _) => true
+    @front.SLabel(_, Some(x)) => names_loop_or_switch(x)
+    _ => false
+  }
+}
+
+///|
 fn check_switch(ctrl : @front.Expr, body : @front.Stmt, ctx : Ctx) -> TStmt {
   let tc = check_expr(ctrl, ctx)
+  let lbls = take_labels(ctx)
   ctx.switch_depth = ctx.switch_depth + 1
+  ctx.break_labels.push(lbls)
   let stmts : Array[TStmt] = match body.kind {
     @front.SCompound(items) => check_block_items(items, ctx)
     _ => [check_stmt(body, ctx)]
@@ -588,6 +628,7 @@ fn check_switch(ctrl : @front.Expr, body : @front.Stmt, ctx : Ctx) -> TStmt {
   let dflt : Array[TStmt?] = [None]
   let dfpos : Array[Int] = [cases.length()]
   sw_collect(stmts, cases, dflt, dfpos)
+  let _ = ctx.break_labels.pop()
   ctx.switch_depth = ctx.switch_depth - 1
   { kind: KSSwitch(tc, cases, dflt[0], dfpos[0]), }
 }
@@ -636,20 +677,33 @@ pub fn check_stmt(s : @front.Stmt, ctx : Ctx) -> TStmt {
     }
     @front.SWhile(c, b) => {
       let tc = check_expr(c, ctx)
+      let lbls = take_labels(ctx)
       ctx.loop_depth = ctx.loop_depth + 1
+      ctx.break_labels.push(lbls)
+      ctx.cont_labels.push(lbls)
       let tb = check_stmt(b, ctx)
+      let _ = ctx.cont_labels.pop()
+      let _ = ctx.break_labels.pop()
       ctx.loop_depth = ctx.loop_depth - 1
       { kind: KSWhile(tc, tb), }
     }
     @front.SDoWhile(b, c) => {
+      let lbls = take_labels(ctx)
       ctx.loop_depth = ctx.loop_depth + 1
+      ctx.break_labels.push(lbls)
+      ctx.cont_labels.push(lbls)
       let tb = check_stmt(b, ctx)
+      let _ = ctx.cont_labels.pop()
+      let _ = ctx.break_labels.pop()
       ctx.loop_depth = ctx.loop_depth - 1
       { kind: KSDoWhile(tb, check_expr(c, ctx)), }
     }
     @front.SFor(init, cond, step, b) => {
+      let lbls = take_labels(ctx)
       ctx.scopes.push()
       ctx.loop_depth = ctx.loop_depth + 1
+      ctx.break_labels.push(lbls)
+      ctx.cont_labels.push(lbls)
       let ti = match init {
         Some(@front.FDecl(spec, decls)) => {
           let arr : Array[TStmt] = []
@@ -669,21 +723,51 @@ pub fn check_stmt(s : @front.Stmt, ctx : Ctx) -> TStmt {
         None => None
       }
       let tb = check_stmt(b, ctx)
+      let _ = ctx.cont_labels.pop()
+      let _ = ctx.break_labels.pop()
       ctx.loop_depth = ctx.loop_depth - 1
       ctx.scopes.pop()
       { kind: KSFor(ti, tc, ts, tb), }
     }
-    @front.SBreak => {
-      if ctx.loop_depth + ctx.switch_depth == 0 {
-        ctx.diags.error("break outside of a loop or switch")
+    @front.SBreak(n) => {
+      let d = match n {
+        None => {
+          if ctx.loop_depth + ctx.switch_depth == 0 {
+            ctx.diags.error("break outside of a loop or switch")
+          }
+          0
+        }
+        Some(l) =>
+          match find_label(ctx.break_labels, l) {
+            Some(d) => d
+            None => {
+              ctx.diags.error(
+                "break label '" + l + "' is not a loop or switch label",
+              )
+              0
+            }
+          }
       }
-      { kind: KSBreak, }
+      { kind: KSBreak(d), }
     }
-    @front.SContinue => {
-      if ctx.loop_depth == 0 {
-        ctx.diags.error("continue outside of a loop")
+    @front.SContinue(n) => {
+      let d = match n {
+        None => {
+          if ctx.loop_depth == 0 {
+            ctx.diags.error("continue outside of a loop")
+          }
+          0
+        }
+        Some(l) =>
+          match find_label(ctx.cont_labels, l) {
+            Some(d) => d
+            None => {
+              ctx.diags.error("continue label '" + l + "' is not a loop label")
+              0
+            }
+          }
       }
-      { kind: KSContinue, }
+      { kind: KSContinue(d), }
     }
     @front.SGoto(n) => {
       ctx.gotos.push(n)
@@ -692,9 +776,21 @@ pub fn check_stmt(s : @front.Stmt, ctx : Ctx) -> TStmt {
     @front.SGotoPtr(e) => { kind: KSGotoPtr(check_expr(e, ctx)), }
     @front.SLabel(n, st) => {
       ctx.labels.set(n, true)
+      // N3355: a label directly on a loop or switch names it for break/continue.
+      let is_loopish = match st {
+        Some(x) => names_loop_or_switch(x)
+        None => false
+      }
+      let old_len = ctx.label_pending.length()
+      if is_loopish {
+        ctx.label_pending.push(n)
+      }
       let tb = match st {
         Some(x) => check_stmt(x, ctx)
         None => { kind: KSEmpty, }
+      }
+      while ctx.label_pending.length() > old_len {
+        let _ = ctx.label_pending.pop()
       }
       { kind: KSLabel(n, tb), }
     }

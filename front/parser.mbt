@@ -1031,11 +1031,13 @@ fn Parser::parse_stmt_kind(self : Parser) -> StmtKind {
       SGoto(n)
     }
   } else if self.eat_kw("continue") {
+    let n = self.eat_ident()
     self.expect_punct(";")
-    SContinue
+    SContinue(n)
   } else if self.eat_kw("break") {
+    let n = self.eat_ident()
     self.expect_punct(";")
-    SBreak
+    SBreak(n)
   } else if self.eat_kw("return") {
     if self.eat_punct(";") {
       SReturn(None)

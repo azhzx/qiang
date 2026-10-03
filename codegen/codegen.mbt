@@ -19,6 +19,9 @@ priv struct Cg {
   label_ids : Map[String, Int]
   mut label_seq : Int
   mut cur_labels : Array[String]
+  // C2y named loops: which loop/switch labels have already had their jump
+  // target emitted, so a duplicate label on a nested loop does not jump back.
+  emitted_labels : Map[String, Bool]
 }
 
 ///|
@@ -1812,13 +1815,13 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
       c.open = false
       c.switch(end)
     }
-    @sema.KSBreak => {
-      let b = c.break_blks[c.break_blks.length() - 1]
+    @sema.KSBreak(d) => {
+      let b = c.break_blks[c.break_blks.length() - 1 - d]
       c.b.jmp(c.fid, b, [])
       c.open = false
     }
-    @sema.KSContinue => {
-      let b = c.cont_blks[c.cont_blks.length() - 1]
+    @sema.KSContinue(d) => {
+      let b = c.cont_blks[c.cont_blks.length() - 1 - d]
       c.b.jmp(c.fid, b, [])
       c.open = false
     }
@@ -1863,18 +1866,35 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
     }
     @sema.KSCaseMark(_, _, b) => c.gen_stmt(b)
     @sema.KSLabel(n, b) => {
-      let blk = match c.labels.get(n) {
-        Some(x) => x
-        None => abort("qpcc: unknown label " + n)
+      let loopish = match b.kind {
+        @sema.KSFor(_, _, _, _)
+        | @sema.KSWhile(_, _)
+        | @sema.KSDoWhile(_, _)
+        | @sema.KSSwitch(_, _, _, _) => true
+        _ => false
       }
-      if c.b.current_block(c.fid) != blk {
-        if c.open {
-          c.b.jmp(c.fid, blk, [])
-          c.open = false
+      // A label that names a loop or switch (C2y N3355) needs its jump target
+      // emitted once; a duplicate label on a nested loop must not jump back to
+      // the outer one. break/continue resolve to a frame depth instead.
+      if loopish && c.emitted_labels.contains(n) {
+        c.gen_stmt(b)
+      } else {
+        if loopish {
+          c.emitted_labels.set(n, true)
         }
-        c.switch(blk)
+        let blk = match c.labels.get(n) {
+          Some(x) => x
+          None => abort("qpcc: unknown label " + n)
+        }
+        if c.b.current_block(c.fid) != blk {
+          if c.open {
+            c.b.jmp(c.fid, blk, [])
+            c.open = false
+          }
+          c.switch(blk)
+        }
+        c.gen_stmt(b)
       }
-      c.gen_stmt(b)
     }
     @sema.KSSwitch(e, cases, dflt, dfpos) => c.gen_switch(e, cases, dflt, dfpos)
     @sema.KSEmpty => ()
@@ -2159,6 +2179,7 @@ pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
     label_ids: Map::new(),
     label_seq: 0,
     cur_labels: [],
+    emitted_labels: Map::new(),
   }
   for f in p.funcs {
     c.gen_func(f)

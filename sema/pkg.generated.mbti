@@ -137,6 +137,9 @@ pub struct Ctx {
   mut cur_locals : Array[(String, CType, Int)]
   mut loop_depth : Int
   mut switch_depth : Int
+  label_pending : Array[String]
+  break_labels : Array[Array[String]]
+  cont_labels : Array[Array[String]]
   mut labels : Map[String, Bool]
   mut gotos : Array[String]
   mut static_counter : Int
@@ -272,8 +275,8 @@ pub(all) enum TStmtKind {
   KSDoWhile(TStmt, TExpr)
   KSFor(TStmt?, TExpr?, TExpr?, TStmt)
   KSBlock(Array[TStmt])
-  KSBreak
-  KSContinue
+  KSBreak(Int)
+  KSContinue(Int)
   KSLabel(String, TStmt)
   KSGoto(String)
   KSGotoPtr(TExpr)

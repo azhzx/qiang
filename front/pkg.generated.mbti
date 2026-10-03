@@ -167,8 +167,8 @@ pub(all) enum StmtKind {
   SFor(ForInit?, Expr?, Expr?, Stmt)
   SGoto(String)
   SGotoPtr(Expr)
-  SContinue
-  SBreak
+  SContinue(String?)
+  SBreak(String?)
   SReturn(Expr?)
   SLabel(String, Stmt?)
   SCase(Expr, Stmt?)

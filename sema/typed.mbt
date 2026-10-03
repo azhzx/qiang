@@ -43,8 +43,10 @@ pub(all) enum TStmtKind {
   KSDoWhile(TStmt, TExpr)
   KSFor(TStmt?, TExpr?, TExpr?, TStmt)
   KSBlock(Array[TStmt])
-  KSBreak
-  KSContinue
+  // The Int is how many break/continue frames to skip when the jump is
+  // named (C2y N3355 named loops); 0 is the innermost.
+  KSBreak(Int)
+  KSContinue(Int)
   KSLabel(String, TStmt)
   KSGoto(String)
   KSGotoPtr(TExpr)

@@ -12,6 +12,11 @@ pub struct Ctx {
   mut cur_locals : Array[(String, CType, Int)]
   mut loop_depth : Int
   mut switch_depth : Int
+  // C2y named loops: the label waiting to name the next loop/switch, and the
+  // stack of labels on the enclosing breakable/continuable constructs.
+  label_pending : Array[String]
+  break_labels : Array[Array[String]]
+  cont_labels : Array[Array[String]]
   mut labels : Map[String, Bool]
   mut gotos : Array[String]
   mut static_counter : Int
@@ -543,6 +548,9 @@ pub fn check(tu : @front.TranslationUnit) -> CheckedProgram {
     cur_locals: [],
     loop_depth: 0,
     switch_depth: 0,
+    label_pending: [],
+    break_labels: [],
+    cont_labels: [],
     labels: Map::new(),
     gotos: [],
     static_counter: 0,
