@@ -47,6 +47,8 @@ pub(all) enum TStmtKind {
   // named (C2y N3355 named loops); 0 is the innermost.
   KSBreak(Int)
   KSContinue(Int)
+  // TS 25755 _Defer: run this statement when the enclosing block exits.
+  KSDefer(TStmt)
   KSLabel(String, TStmt)
   KSGoto(String)
   KSGotoPtr(TExpr)

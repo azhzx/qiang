@@ -579,6 +579,13 @@ fn sw_collect(
 ///|
 // C2y named loops: the innermost enclosing breakable/continuable construct
 // whose label is `l`, as a frame-skip count (0 == innermost).
+fn check_jump_out_of_defer(ctx : Ctx) -> Unit {
+  if ctx.defer_depth > 0 {
+    ctx.diags.error("cannot jump out of a _Defer statement")
+  }
+}
+
+///|
 fn find_label(stack : Array[Array[String]], l : String) -> Int? {
   let mut i = stack.length()
   while i > 0 {
@@ -665,7 +672,10 @@ pub fn check_stmt(s : @front.Stmt, ctx : Ctx) -> TStmt {
     }
     @front.SExpr(Some(e)) => { kind: KSExpr(Some(check_expr(e, ctx))), }
     @front.SExpr(None) => { kind: KSEmpty, }
-    @front.SReturn(e) => check_return(e, ctx)
+    @front.SReturn(e) => {
+      check_jump_out_of_defer(ctx)
+      check_return(e, ctx)
+    }
     @front.SIf(c, t, el) => {
       let tc = check_expr(c, ctx)
       let tt = check_stmt(t, ctx)
@@ -730,6 +740,7 @@ pub fn check_stmt(s : @front.Stmt, ctx : Ctx) -> TStmt {
       { kind: KSFor(ti, tc, ts, tb), }
     }
     @front.SBreak(n) => {
+      check_jump_out_of_defer(ctx)
       let d = match n {
         None => {
           if ctx.loop_depth + ctx.switch_depth == 0 {
@@ -751,6 +762,7 @@ pub fn check_stmt(s : @front.Stmt, ctx : Ctx) -> TStmt {
       { kind: KSBreak(d), }
     }
     @front.SContinue(n) => {
+      check_jump_out_of_defer(ctx)
       let d = match n {
         None => {
           if ctx.loop_depth == 0 {
@@ -770,10 +782,14 @@ pub fn check_stmt(s : @front.Stmt, ctx : Ctx) -> TStmt {
       { kind: KSContinue(d), }
     }
     @front.SGoto(n) => {
+      check_jump_out_of_defer(ctx)
       ctx.gotos.push(n)
       { kind: KSGoto(n), }
     }
-    @front.SGotoPtr(e) => { kind: KSGotoPtr(check_expr(e, ctx)), }
+    @front.SGotoPtr(e) => {
+      check_jump_out_of_defer(ctx)
+      { kind: KSGotoPtr(check_expr(e, ctx)), }
+    }
     @front.SLabel(n, st) => {
       ctx.labels.set(n, true)
       // N3355: a label directly on a loop or switch names it for break/continue.
@@ -793,6 +809,12 @@ pub fn check_stmt(s : @front.Stmt, ctx : Ctx) -> TStmt {
         let _ = ctx.label_pending.pop()
       }
       { kind: KSLabel(n, tb), }
+    }
+    @front.SDefer(st) => {
+      ctx.defer_depth = ctx.defer_depth + 1
+      let tb = check_stmt(st, ctx)
+      ctx.defer_depth = ctx.defer_depth - 1
+      { kind: KSDefer(tb), }
     }
     @front.SEmpty => { kind: KSEmpty, }
     @front.SDecl(spec, decls) => {

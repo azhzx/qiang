@@ -955,6 +955,10 @@ fn Parser::parse_stmt(self : Parser) -> Stmt {
 ///|
 fn Parser::parse_stmt_kind(self : Parser) -> StmtKind {
   self.skip_attrs()
+  if self.at_kw("_Defer") {
+    self.pos = self.pos + 1
+    return SDefer(self.parse_stmt())
+  }
   if self.at_punct("{") {
     self.parse_compound()
   } else if self.eat_kw("if") {

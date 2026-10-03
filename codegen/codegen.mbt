@@ -22,6 +22,13 @@ priv struct Cg {
   // C2y named loops: which loop/switch labels have already had their jump
   // target emitted, so a duplicate label on a nested loop does not jump back.
   emitted_labels : Map[String, Bool]
+  // TS 25755 _Defer: one frame per open lexical block, holding the deferred
+  // statements registered in it. break/cont frames and goto labels remember
+  // how deep the frame stack was, so a jump can run the frames it leaves.
+  defer_frames : Array[Array[@sema.TStmt]]
+  break_depths : Array[Int]
+  cont_depths : Array[Int]
+  label_depths : Map[String, Int]
 }
 
 ///|
@@ -1552,6 +1559,7 @@ fn Cg::gen_switch(
     c.b.jnz(c.fid, cc, blocks[i], [], next, [])
     c.open = false
   }
+  c.break_depths.push(c.defer_frames.length())
   c.break_blks.push(end)
   for i in 0..<n {
     c.switch(blocks[i])
@@ -1583,6 +1591,7 @@ fn Cg::gen_switch(
     }
     None => ()
   }
+  let _ = c.break_depths.pop()
   let _ = c.break_blks.pop()
   c.switch(end)
 }
@@ -1615,9 +1624,78 @@ fn Cg::gen_cond_branch(c : Cg, e : @sema.TExpr, t : Int, f : Int) -> Unit {
 }
 
 ///|
-fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
+// Emit the deferred statements of frames [from, len) innermost first (TS
+// 25755: they run when the enclosing block is left, in reverse order).
+fn Cg::run_defers(c : Cg, from : Int) -> Unit {
+  let mut i = c.defer_frames.length()
+  while i > from {
+    i = i - 1
+    let frame = c.defer_frames[i]
+    if frame.length() > 0 {
+      if !c.open {
+        let dead = c.new_block("defer.dead")
+        c.switch(dead)
+      }
+      let mut j = frame.length()
+      while j > 0 {
+        j = j - 1
+        c.gen_stmt(frame[j])
+      }
+    }
+  }
+}
+
+///|
+fn collect_label_depths(
+  s : @sema.TStmt,
+  depth : Int,
+  out : Map[String, Int],
+) -> Unit {
   match s.kind {
     @sema.KSBlock(ss) =>
+      for x in ss {
+        collect_label_depths(x, depth + 1, out)
+      }
+    @sema.KSCaseMark(_, _, b) => collect_label_depths(b, depth, out)
+    @sema.KSLabel(n, b) => {
+      out.set(n, depth)
+      collect_label_depths(b, depth, out)
+    }
+    @sema.KSIf(_, a, b) => {
+      collect_label_depths(a, depth, out)
+      match b {
+        Some(x) => collect_label_depths(x, depth, out)
+        None => ()
+      }
+    }
+    @sema.KSWhile(_, b) => collect_label_depths(b, depth, out)
+    @sema.KSDoWhile(b, _) => collect_label_depths(b, depth, out)
+    @sema.KSFor(i, _, _, b) => {
+      match i {
+        Some(x) => collect_label_depths(x, depth, out)
+        None => ()
+      }
+      collect_label_depths(b, depth, out)
+    }
+    @sema.KSSwitch(_, cases, d, _) => {
+      for c in cases {
+        collect_label_depths(c.1, depth, out)
+      }
+      match d {
+        Some(x) => collect_label_depths(x, depth, out)
+        None => ()
+      }
+    }
+    @sema.KSDefer(b) => collect_label_depths(b, depth, out)
+    _ => ()
+  }
+}
+
+///|
+fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
+  match s.kind {
+    @sema.KSBlock(ss) => {
+      c.defer_frames.push([])
       for x in ss {
         if !c.open {
           let dead = c.new_block("dead")
@@ -1625,6 +1703,10 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
         }
         c.gen_stmt(x)
       }
+      c.run_defers(c.defer_frames.length() - 1)
+      let _ = c.defer_frames.pop()
+    }
+    @sema.KSDefer(b) => c.defer_frames[c.defer_frames.length() - 1].push(b)
     @sema.KSDecl(name, ty, init, _) =>
       match init {
         Some(e) => {
@@ -1697,6 +1779,7 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
     }
     @sema.KSExpr(None) => ()
     @sema.KSReturn(e) => {
+      c.run_defers(0)
       match e {
         Some(x) =>
           if c.ret_sret {
@@ -1745,7 +1828,9 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
       c.open = false
       c.switch(cb)
       c.gen_cond_branch(cond, bb, end)
+      c.break_depths.push(c.defer_frames.length())
       c.break_blks.push(end)
+      c.cont_depths.push(c.defer_frames.length())
       c.cont_blks.push(cb)
       c.switch(bb)
       c.gen_stmt(body)
@@ -1753,7 +1838,9 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
         c.b.jmp(c.fid, cb, [])
         c.open = false
       }
+      let _ = c.break_depths.pop()
       let _ = c.break_blks.pop()
+      let _ = c.cont_depths.pop()
       let _ = c.cont_blks.pop()
       c.switch(end)
     }
@@ -1763,7 +1850,9 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
       let end = c.new_block("do.end")
       c.b.jmp(c.fid, bb, [])
       c.open = false
+      c.break_depths.push(c.defer_frames.length())
       c.break_blks.push(end)
+      c.cont_depths.push(c.defer_frames.length())
       c.cont_blks.push(cb)
       c.switch(bb)
       c.gen_stmt(body)
@@ -1771,7 +1860,9 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
         c.b.jmp(c.fid, cb, [])
         c.open = false
       }
+      let _ = c.break_depths.pop()
       let _ = c.break_blks.pop()
+      let _ = c.cont_depths.pop()
       let _ = c.cont_blks.pop()
       c.switch(cb)
       c.gen_cond_branch(cond, bb, end)
@@ -1794,7 +1885,9 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
         None => c.b.jmp(c.fid, bb, [])
       }
       c.open = false
+      c.break_depths.push(c.defer_frames.length())
       c.break_blks.push(end)
+      c.cont_depths.push(c.defer_frames.length())
       c.cont_blks.push(sb)
       c.switch(bb)
       c.gen_stmt(body)
@@ -1802,7 +1895,9 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
         c.b.jmp(c.fid, sb, [])
         c.open = false
       }
+      let _ = c.break_depths.pop()
       let _ = c.break_blks.pop()
+      let _ = c.cont_depths.pop()
       let _ = c.cont_blks.pop()
       c.switch(sb)
       match step {
@@ -1816,16 +1911,24 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
       c.switch(end)
     }
     @sema.KSBreak(d) => {
+      c.run_defers(c.break_depths[c.break_depths.length() - 1 - d])
       let b = c.break_blks[c.break_blks.length() - 1 - d]
       c.b.jmp(c.fid, b, [])
       c.open = false
     }
     @sema.KSContinue(d) => {
+      c.run_defers(c.cont_depths[c.cont_depths.length() - 1 - d])
       let b = c.cont_blks[c.cont_blks.length() - 1 - d]
       c.b.jmp(c.fid, b, [])
       c.open = false
     }
     @sema.KSGoto(n) => {
+      c.run_defers(
+        match c.label_depths.get(n) {
+          Some(x) => x
+          None => 0
+        },
+      )
       let blk = match c.labels.get(n) {
         Some(b) => b
         None => abort("qpcc: unknown label " + n)
@@ -2027,6 +2130,8 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
   }
   let label_names : Array[String] = []
   collect_labels(f.body, label_names)
+  c.label_depths.clear()
+  collect_label_depths(f.body, 0, c.label_depths)
   c.cur_labels = []
   for n in label_names {
     if !c.labels.contains(n) {
@@ -2180,6 +2285,10 @@ pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
     label_seq: 0,
     cur_labels: [],
     emitted_labels: Map::new(),
+    defer_frames: [],
+    break_depths: [],
+    cont_depths: [],
+    label_depths: Map::new(),
   }
   for f in p.funcs {
     c.gen_func(f)

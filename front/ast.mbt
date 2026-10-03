@@ -140,6 +140,8 @@ pub(all) enum StmtKind {
   SGotoPtr(Expr)
   SContinue(String?)
   SBreak(String?)
+  // TS 25755 / N3590: _Defer statement runs when the enclosing block exits.
+  SDefer(Stmt)
   SReturn(Expr?)
   SLabel(String, Stmt?)
   SCase(Expr, Stmt?)

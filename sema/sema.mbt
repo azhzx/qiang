@@ -15,6 +15,8 @@ pub struct Ctx {
   // C2y named loops: the label waiting to name the next loop/switch, and the
   // stack of labels on the enclosing breakable/continuable constructs.
   label_pending : Array[String]
+  // Nesting depth inside _Defer statements: jumps out of one are diagnosed.
+  mut defer_depth : Int
   break_labels : Array[Array[String]]
   cont_labels : Array[Array[String]]
   mut labels : Map[String, Bool]
@@ -549,6 +551,7 @@ pub fn check(tu : @front.TranslationUnit) -> CheckedProgram {
     loop_depth: 0,
     switch_depth: 0,
     label_pending: [],
+    defer_depth: 0,
     break_labels: [],
     cont_labels: [],
     labels: Map::new(),
