@@ -208,7 +208,7 @@ pub(all) enum TypeSpec {
   TKw(String)
   TStruct(String?, Array[StructDecl])
   TUnion(String?, Array[StructDecl])
-  TEnum(String?, Array[EnumItem])
+  TEnum(String?, Array[EnumItem], DeclSpec?)
   TTypedefName(String)
   TTypeofExpr(Expr)
   TTypeofType(DeclSpec, Declarator)

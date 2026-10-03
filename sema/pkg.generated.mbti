@@ -38,6 +38,10 @@ pub fn encode_global_init(@front.Initializer, CType, Int, Array[Byte], Array[(In
 
 pub fn func_params(@front.Declarator) -> Array[@front.ParamDecl]
 
+pub fn has_auto_type(@front.DeclSpec) -> Bool
+
+pub fn infer_auto_type(Array[@front.InitDeclarator], @front.InitDeclarator, Ctx) -> CType
+
 pub fn int_literal_type(String) -> CType
 
 pub fn is_arith(CType) -> Bool
@@ -173,6 +177,7 @@ pub struct Layout {
   size : Int
   align : Int
   enum_vals : Array[(String, Int64)]
+  enum_ty : CType?
 }
 
 pub struct ScopeStack {
@@ -204,6 +209,7 @@ pub(all) enum Storage {
 
 pub(all) enum SymKind {
   SymVar
+  SymConstVar
   SymFunc
   SymTypedef
   SymEnumConst
