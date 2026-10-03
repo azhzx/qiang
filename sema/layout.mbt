@@ -18,6 +18,13 @@ pub struct Layout {
   // For an enum, the C23 underlying integer type (default int); the enum is
   // represented by it. None for structs and unions.
   enum_ty : CType?
+  // QPCC -f_tagged_union: `_Tagged_union Tag { ... }` is laid out as
+  // `struct { int __tag; union { members } __payload; }`. `tagged` marks
+  // it, `payload_off` is where the members start, and `tag_vals` maps a
+  // member name to its discriminator (declaration order, 0-based).
+  tagged : Bool
+  payload_off : Int
+  tag_vals : Array[(String, Int64)]
 }
 
 ///|

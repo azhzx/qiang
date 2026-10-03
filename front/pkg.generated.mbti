@@ -14,9 +14,11 @@ pub fn is_keyword(String) -> Bool
 
 pub fn is_keyword_mode(String, StdMode) -> Bool
 
-pub fn parse(String, mode? : StdMode) -> TranslationUnit
+pub fn is_tagged_keyword(String) -> Bool
 
-pub fn tokenize(String, StdMode) -> Array[Token]
+pub fn parse(String, mode? : StdMode, tagged_union? : Bool) -> TranslationUnit
+
+pub fn tokenize(String, StdMode, tagged_union? : Bool) -> Array[Token]
 
 // Errors
 
@@ -216,6 +218,7 @@ pub(all) enum TypeSpec {
   TKw(String)
   TStruct(String?, Array[StructDecl])
   TUnion(String?, Array[StructDecl])
+  TTaggedUnion(String, Array[StructDecl])
   TEnum(String?, Array[EnumItem], DeclSpec?)
   TTypedefName(String)
   TTypeofExpr(Expr)

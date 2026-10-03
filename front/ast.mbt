@@ -35,6 +35,9 @@ pub(all) enum TypeSpec {
   TKw(String)
   TStruct(String?, Array[StructDecl])
   TUnion(String?, Array[StructDecl])
+  // QPCC -f_tagged_union: _Tagged_union Tag { members }. The tag is a
+  // synthetic int at offset 0, the members overlap after it.
+  TTaggedUnion(String, Array[StructDecl])
   // tag, enumerators, C23 fixed underlying type (default int)
   TEnum(String?, Array[EnumItem], DeclSpec?)
   TTypedefName(String)

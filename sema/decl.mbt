@@ -156,6 +156,8 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
         base = Some(CStruct(resolve_aggregate(ctx, tag, body, false)))
       @front.TUnion(tag, body) =>
         base = Some(CUnion(resolve_aggregate(ctx, tag, body, true)))
+      @front.TTaggedUnion(tag, body) =>
+        base = Some(resolve_tagged_union(ctx, tag, body))
       @front.TEnum(tag, items, underlying) => {
         base = Some(define_enum(ctx, tag, items, underlying))
         // An enum is represented by its underlying integer type; keep the
@@ -234,6 +236,106 @@ fn resolve_aggregate(
     }
   }
   define_aggregate(ctx, tag, body, is_union)
+}
+
+///|
+///|
+/// Resolve a `_Tagged_union Tag { ... }`: an existing tag with no body, or
+/// a freshly defined one.
+fn resolve_tagged_union(
+  ctx : Ctx,
+  tag : String,
+  body : Array[@front.StructDecl],
+) -> CType {
+  if body.length() == 0 {
+    match ctx.scopes.lookup_tag(tag) {
+      Some(i) =>
+        if ctx.layouts[i].tagged {
+          return CStruct(i)
+        } else {
+          ctx.diags.error("not a _Tagged_union: " + tag)
+        }
+      None => ctx.diags.error("unknown _Tagged_union: " + tag)
+    }
+  }
+  define_tagged_union(ctx, tag, body)
+}
+
+///|
+/// Define `_Tagged_union Tag { body }`: the synthetic int tag sits at
+/// offset 0 and the members overlap after it, like
+/// `struct { int __tag; union { members } __payload; }`.
+fn define_tagged_union(
+  ctx : Ctx,
+  tag : String,
+  body : Array[@front.StructDecl],
+) -> CType {
+  let fields : Array[Field] = []
+  let tag_vals : Array[(String, Int64)] = []
+  let mut maxa = 1
+  let mut maxsz = 0
+  let mut next : Int64 = 0L
+  for sd in body {
+    match sd {
+      @front.SDecl(spec, decls) =>
+        for idecl in decls {
+          let b = declspec_to_type(spec, ctx)
+          let ty = build_type(idecl.decl, b, ctx)
+          match idecl.bits {
+            Some(_) =>
+              ctx.diags.error("_Tagged_union members cannot be bit-fields")
+            None => ()
+          }
+          let name = match decl_name(idecl.decl) {
+            Some(n) => n
+            None => ""
+          }
+          if name == "" {
+            ctx.diags.error("_Tagged_union members need names")
+          } else {
+            let a = align_of_ty(ty, ctx.layouts)
+            let sz = size_of_ty(ty, ctx.layouts)
+            if a > maxa {
+              maxa = a
+            }
+            if sz > maxsz {
+              maxsz = sz
+            }
+            fields.push({ name, ty, offset: 0, bit_width: 0, bit_offset: 0, })
+            tag_vals.push((name, next))
+            next = next + 1L
+          }
+        }
+      @front.SStaticAssert(e, _) =>
+        if const_eval_int(e, ctx) == 0L {
+          ctx.diags.error("static assertion failed")
+        }
+      @front.SAnon(_) =>
+        ctx.diags.error("_Tagged_union members need names")
+      @front.SPragma(_) => ()
+    }
+  }
+  if fields.length() == 0 {
+    ctx.diags.error("_Tagged_union needs at least one member")
+  }
+  let payload_off = align_up(4, maxa)
+  let align = if maxa > 4 { maxa } else { 4 }
+  let size = align_up(payload_off + maxsz, align)
+  let idx = ctx.layouts.length()
+  ctx.layouts.push({
+    name: tag,
+    is_union: false,
+    fields,
+    size,
+    align,
+    enum_vals: [],
+    enum_ty: None,
+    tagged: true,
+    payload_off,
+    tag_vals,
+  })
+  ctx.scopes.define_tag(tag, idx)
+  CStruct(idx)
 }
 
 ///|
@@ -374,6 +476,9 @@ fn define_aggregate(
                 align: maxa,
                 enum_vals: [],
                 enum_ty: None,
+                tagged: false,
+                payload_off: 0,
+                tag_vals: [],
               }
               return i
             }
@@ -391,6 +496,9 @@ fn define_aggregate(
     align: maxa,
     enum_vals: [],
     enum_ty: None,
+    tagged: false,
+    payload_off: 0,
+    tag_vals: [],
   })
   match tag {
     Some(t) => ctx.scopes.define_tag(t, idx)
@@ -466,6 +574,9 @@ fn define_enum(
     align: align_of_ty(u, ctx.layouts),
     enum_vals: vals,
     enum_ty: Some(u),
+    tagged: false,
+    payload_off: 0,
+    tag_vals: [],
   })
   match tag {
     Some(t) => ctx.scopes.define_tag(t, idx)

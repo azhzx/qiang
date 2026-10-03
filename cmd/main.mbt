@@ -8,7 +8,7 @@
 /// #include/#define beyond simple directives (plain # lines are stripped here).
 fn usage() -> Unit {
   println(
-    "usage: qpcc <input.c> [-o out.o] [--emit obj|asm|qbe] [-std=c11|c23] [--check]",
+    "usage: qpcc <input.c> [-o out.o] [--emit obj|asm|qbe] [-std=c11|c23|c2y] [--check] [-f_tagged_union]",
   )
 }
 
@@ -34,6 +34,7 @@ fn main {
   let mut emit = "obj"
   let mut mode = @front.C11
   let mut check_only = false
+  let mut tagged_union = false
   let mut i = 1
   while i < args.length() {
     let a = args[i]
@@ -52,6 +53,8 @@ fn main {
       continue
     } else if a == "--check" {
       check_only = true
+    } else if a == "-f_tagged_union" {
+      tagged_union = true
     } else if a == "-std=c2y" {
       mode = @front.C2y
     } else if a == "-std=c23" {
@@ -72,7 +75,7 @@ fn main {
   let src = @fs.read_file_to_string(input) catch {
     _ => abort("qpcc: cannot read " + input)
   }
-  let tu = @front.parse(strip_directives(src), mode~)
+  let tu = @front.parse(strip_directives(src), mode~, tagged_union~)
   let prog = @sema.check(tu)
   let mut errs = 0
   for d in prog.diags {

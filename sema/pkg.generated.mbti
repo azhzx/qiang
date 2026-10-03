@@ -184,6 +184,9 @@ pub struct Layout {
   align : Int
   enum_vals : Array[(String, Int64)]
   enum_ty : CType?
+  tagged : Bool
+  payload_off : Int
+  tag_vals : Array[(String, Int64)]
 }
 
 pub struct ScopeStack {

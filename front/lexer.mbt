@@ -146,6 +146,17 @@ pub fn is_c2y_keyword(s : String) -> Bool {
 }
 
 ///|
+///|
+/// QPCC \`-f_tagged_union\` keywords. Without the flag they are ordinary
+/// identifiers.
+pub fn is_tagged_keyword(s : String) -> Bool {
+  match s {
+    "_Tagged_union" | "_Tag_of" | "_Get_tag" => true
+    _ => false
+  }
+}
+
+///|
 pub fn is_keyword_mode(s : String, mode : StdMode) -> Bool {
   is_keyword(s) ||
   (match mode {
@@ -161,6 +172,7 @@ priv struct Scanner {
   mut line : Int
   mut col : Int
   mode : StdMode
+  tagged_union : Bool
 }
 
 ///|
@@ -453,7 +465,8 @@ fn Scanner::next(self : Scanner) -> Token {
     [c, ..] if is_id_start(c) => {
       let s = self.read_while(is_id_char)
       mk(
-        if is_keyword_mode(s, self.mode) {
+        if is_keyword_mode(s, self.mode) ||
+          (self.tagged_union && is_tagged_keyword(s)) {
           Keyword(s)
         } else {
           Ident(s)
@@ -497,8 +510,8 @@ fn Scanner::next(self : Scanner) -> Token {
 }
 
 ///|
-pub fn tokenize(src : String, mode : StdMode) -> Array[Token] {
-  let sc = Scanner::{ src, line: 1, col: 1, mode, }
+pub fn tokenize(src : String, mode : StdMode, tagged_union? : Bool = false) -> Array[Token] {
+  let sc = Scanner::{ src, line: 1, col: 1, mode, tagged_union, }
   let out : Array[Token] = []
   let mut go = true
   while go {

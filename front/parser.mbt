@@ -8,6 +8,7 @@ priv struct Parser {
   mut pos : Int
   typedefs : Map[String, Bool]
   mode : StdMode
+  tagged_union : Bool
 }
 
 ///|
@@ -163,6 +164,7 @@ fn Parser::is_type_start_at(self : Parser, off : Int) -> Bool {
       is_qualifier_kw(k) ||
       k == "struct" ||
       k == "union" ||
+      k == "_Tagged_union" ||
       k == "enum" ||
       k == "typeof" ||
       k == "__typeof" ||
@@ -527,6 +529,18 @@ fn Parser::parse_declspec(self : Parser) -> DeclSpec {
             []
           }
           type_specs.push(TUnion(tag, body))
+        } else if k == "_Tagged_union" {
+          self.pos = self.pos + 1
+          let tag = match self.eat_ident() {
+            Some(t) => t
+            None => self.fail("_Tagged_union needs a tag")
+          }
+          let body = if self.at_punct("{") {
+            self.parse_struct_body()
+          } else {
+            []
+          }
+          type_specs.push(TTaggedUnion(tag, body))
         } else if k == "enum" {
           self.pos = self.pos + 1
           let tag = self.eat_ident()
@@ -1240,6 +1254,7 @@ fn Parser::parse_cast_expr(self : Parser) -> Expr {
         is_qualifier_kw(k) ||
         k == "struct" ||
         k == "union" ||
+        k == "_Tagged_union" ||
         k == "enum" ||
         k == "_Atomic" ||
         k == "typeof" ||
@@ -1324,6 +1339,7 @@ fn Parser::parse_unary_expr(self : Parser) -> Expr {
             is_qualifier_kw(k) ||
             k == "struct" ||
             k == "union" ||
+            k == "_Tagged_union" ||
             k == "enum" ||
             k == "_Atomic" ||
             k == "typeof" ||
@@ -1613,8 +1629,8 @@ fn empty_declspec() -> DeclSpec {
 }
 
 ///|
-pub fn parse(src : String, mode? : StdMode = C11) -> TranslationUnit {
-  let toks = tokenize(src, mode)
+pub fn parse(src : String, mode? : StdMode = C11, tagged_union? : Bool = false) -> TranslationUnit {
+  let toks = tokenize(src, mode, tagged_union~)
   let typedefs : Map[String, Bool] = Map::new()
   for
     n in [
@@ -1622,7 +1638,7 @@ pub fn parse(src : String, mode? : StdMode = C11) -> TranslationUnit {
     ] {
     typedefs.set(n, true)
   }
-  let p = Parser::{ toks, pos: 0, typedefs, mode, }
+  let p = Parser::{ toks, pos: 0, typedefs, mode, tagged_union, }
   let decls : Array[ExternalDecl] = []
   while !(p.peek().kind is Eof) {
     decls.push(p.parse_external_decl())
