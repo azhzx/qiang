@@ -119,10 +119,12 @@ Not supported:
 
 ## Testing
 
-- `sh qpcc/test.sh` — clang oracle over `qpcc/tests/*.c` (73 fixtures).
+- `sh qpcc/test.sh` — clang oracle over `qpcc/tests/*.c` (134 fixtures).
 - `moon test --target native qpcc/front qpcc/sema` — front-end and sema tests.
 - `qpcc/chibicc-tests/` — a vendored chibicc subset used for parsing and
   end-to-end checks.
+- The full C feature matrix (types, aggregates, C23, GNU extensions, known
+  gaps): [`../doc/qpcc.md`](../doc/qpcc.md).
 - `sh examples/qpcc-selfhost/build-qbe-with-qpcc.sh` — compiles the whole of
   `vendor/qbe` with QPCC, links it, and checks that the resulting `qbe` emits
   byte-identical assembly to a reference build over QBE's own test corpus.
