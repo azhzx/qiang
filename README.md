@@ -66,28 +66,27 @@ was checked end to end (compile, link with clang, run) unless noted otherwise.
 Supported:
 
 - `bool`/`true`/`false`, `nullptr`
-- `constexpr`, `_BitInt(N)`
+- `constexpr` as a constant-expression object (usable in `static_assert`,
+  array bounds, ...), and `_BitInt(N)`
 - `typeof_unqual`, `alignas`/`alignof`
-- C23 attributes (`[[maybe_unused]]`, `[[noreturn]]`, ...)
-- `static_assert` with literal constant expressions
-- binary integer literals (`0b1010`) and `u8'x'` character literals
-- `auto` type inference
-
-Not supported (parse error):
-
-- `char8_t`
-- digit separators (`1'000`)
-- fixed underlying enum types (`enum E : unsigned char`)
-- `[[fallthrough]]` in statement position
+- C23 attributes (`[[maybe_unused]]`, `[[noreturn]]`, `[[fallthrough]]`, ...)
+- `static_assert`
+- binary integer literals (`0b1010`), `u8'x'` character literals and digit
+  separators (`1'000`, `0xFF'FF`, `0b1'010`)
+- `char8_t` (a built-in name for `unsigned char`)
+- `auto` type inference, sharing its implementation with GNU `__auto_type`
+- fixed underlying enum types (`enum E : T`); the enum is represented by its
+  underlying integer type
 
 Known limitations:
 
-- `static_assert` does not evaluate named constants: `const int N = 3;
-  static_assert(N == 3, "N")` fails, and `constexpr int N = 3` behaves the
-  same, so `constexpr` currently acts as a constant expression in ordinary
-  code but not in `static_assert`.
-- The C23 tests in `qpcc/front/front_wbtest.mbt` cover parsing only, not code
-  generation; the list above is from manual end-to-end checks.
+- `const` objects are not constant expressions (standard C): only `constexpr`
+  is, so `const int N = 3; static_assert(N == 3, "N")` is rejected while
+  `constexpr int N = 3; static_assert(N == 3, "N")` is accepted.
+- `char8_t` is treated as a built-in type name rather than the `<uchar.h>`
+  typedef, so it cannot be shadowed.
+- The feature matrix (status per construct, with the oracle fixtures that
+  cover each) is in `../doc/qpcc.md`.
 
 ## GNU extensions
 
