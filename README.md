@@ -88,6 +88,31 @@ Known limitations:
 - The feature matrix (status per construct, with the oracle fixtures that
   cover each) is in `../doc/qpcc.md`.
 
+## C2y status
+
+C2y syntax is opt-in through \`-std=c2y\`; C11 and C23 are unchanged.
+
+Supported:
+
+- \`_Maxof(type-name)\` / \`_Minof(type-name)\` (N3628): an integer type is
+  required (\`_Bool\` is rejected) and the result is a constant of that type.
+- \`_Countof(expr)\` / \`_Countof(type-name)\` (N3369): the operand must have
+  array type and the result is the element count.
+- Named loops (N3355): a \`label:\` on a loop or switch, and
+  \`break label;\` / \`continue label;\`. A chain of labels names the same
+  statement, and a duplicate label on a nested loop binds to the innermost.
+- \`_Defer\` statements (TS 25755 / N3590): the deferred statement runs when
+  its enclosing block is left, in reverse order, on any exit (falling off the
+  end, \`return\`, \`break\`, \`continue\`, \`goto\` out). A jump that would leave
+  the \`_Defer\` statement itself, and a \`goto\` into it, are diagnosed.
+
+The \`defer\` and \`countof\` spellings are provided by the hand-written
+\`qpcc/include/qbe/stddefer.h\` (\`defer\` -> \`_Defer\`) and
+\`stdcountof.h\` (\`countof\` -> \`_Countof\`); pass
+\`clang -E -P -I <qpcc>/qpcc/include/qbe\` to the external preprocessor to use
+them, as \`qpcc/test.sh\` does for \`std=c2y\` fixtures. QPCC itself only
+recognizes the underscore keywords.
+
 ## GNU extensions
 
 Checked the same way. Supported:
@@ -118,7 +143,7 @@ Not supported:
 
 ## Testing
 
-- `sh qpcc/test.sh` — clang oracle over `qpcc/tests/*.c` (134 fixtures).
+- `sh qpcc/test.sh` — clang oracle over `qpcc/tests/*.c` (144 fixtures).
 - `moon test --target native qpcc/front qpcc/sema` — front-end and sema tests.
 - `qpcc/chibicc-tests/` — a vendored chibicc subset used for parsing and
   end-to-end checks.

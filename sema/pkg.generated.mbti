@@ -138,6 +138,7 @@ pub struct Ctx {
   mut loop_depth : Int
   mut switch_depth : Int
   label_pending : Array[String]
+  mut defer_depth : Int
   break_labels : Array[Array[String]]
   cont_labels : Array[Array[String]]
   mut labels : Map[String, Bool]
@@ -277,6 +278,7 @@ pub(all) enum TStmtKind {
   KSBlock(Array[TStmt])
   KSBreak(Int)
   KSContinue(Int)
+  KSDefer(TStmt)
   KSLabel(String, TStmt)
   KSGoto(String)
   KSGotoPtr(TExpr)
