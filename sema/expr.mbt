@@ -204,6 +204,11 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
       if !tl.lvalue {
         ctx.diags.error("assignment to non-lvalue")
       }
+      if has_tagged_member(tl) {
+        ctx.diags.error(
+          "cannot assign to a _Tagged_union member; assign a whole value",
+        )
+      }
       let combined = if op == "=" {
         tr
       } else {
@@ -569,6 +574,19 @@ fn tag_of(layout : Layout, name : String) -> Int64? {
 }
 
 ///|
+// QPCC -f_tagged_union: does this lvalue go through a tagged-union member?
+fn has_tagged_member(e : TExpr) -> Bool {
+  match e.kind {
+    TTaggedMember(_, _, _) => true
+    TMember(b, _) => has_tagged_member(b)
+    TBitField(b, _, _, _) => has_tagged_member(b)
+    TIndex(b, _) => has_tagged_member(b)
+    TDeref(p) => has_tagged_member(p)
+    _ => false
+  }
+}
+
+///|
 fn check_unary(op : String, x : @front.Expr, ctx : Ctx) -> TExpr {
   if op == "&&" {
     let n = match x {
@@ -605,8 +623,14 @@ fn check_unary(op : String, x : @front.Expr, ctx : Ctx) -> TExpr {
         _ => tx
       }
     "-" | "~" => mk_expr(TUn(op, tx), tx.ty, false)
-    "++" | "--" | "pre++" | "pre--" | "post++" | "post--" =>
+    "++" | "--" | "pre++" | "pre--" | "post++" | "post--" => {
+      if has_tagged_member(tx) {
+        ctx.diags.error(
+          "cannot modify a _Tagged_union member; assign a whole value",
+        )
+      }
       mk_expr(TUn(op, tx), tx.ty, false)
+    }
     _ => tx
   }
 }

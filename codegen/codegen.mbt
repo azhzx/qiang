@@ -493,26 +493,6 @@ fn elem_of(ty : @sema.CType) -> @sema.CType {
 }
 
 ///|
-// QPCC -f_tagged_union: find the outermost tagged-union payload member an
-// lvalue stores through, and the discriminator that store must also write.
-fn tagged_lhs(e : @sema.TExpr) -> (@sema.TExpr, Int64)? {
-  match e.kind {
-    @sema.TTaggedMember(b, _, tag) => Some((b, tag))
-    @sema.TMember(b, _) => tagged_lhs(b)
-    @sema.TBitField(b, _, _, _) => tagged_lhs(b)
-    @sema.TIndex(b, _) => tagged_lhs(b)
-    @sema.TDeref(p) => tagged_lhs(p)
-    _ => None
-  }
-}
-
-///|
-fn Cg::store_tag(c : Cg, base : @sema.TExpr, tag : Int64) -> Unit {
-  let a = c.gen_addr(base)
-  c.store_scalar(@sema.CInt(true), c.b.iconst(c.fid, tag), a)
-}
-
-///|
 fn Cg::gen_addr(c : Cg, e : @sema.TExpr) -> Int {
   match e.kind {
     @sema.TVar(n) =>
@@ -693,7 +673,6 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
           c.bitfield_read(l.ty, addr, bo, bw)
         }
         _ => {
-          let ta = tagged_lhs(l)
           let a = c.gen_addr(l)
           let res = if is_complex_ty(l.ty) && !is_composite(r.ty) {
             let elem = elem_of(l.ty)
@@ -721,10 +700,6 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
             let vv = c.convert(v, r.ty, l.ty)
             c.store_scalar(l.ty, vv, a)
             vv
-          }
-          match ta {
-            Some((base, tag)) => c.store_tag(base, tag)
-            None => ()
           }
           res
         }
@@ -1497,10 +1472,6 @@ fn Cg::gen_un(c : Cg, op : String, x : @sema.TExpr) -> Int {
         one,
       )
       c.store_scalar(ty, nv, a)
-      match tagged_lhs(x) {
-        Some((base, tag)) => c.store_tag(base, tag)
-        None => ()
-      }
       if pre {
         nv
       } else {

@@ -1,6 +1,8 @@
 // expect-exit 0
 // tagged
 // QPCC -f_tagged_union extension: clang has no such keyword, so QPCC-only.
+// A tagged-union member cannot be assigned directly; change the value as a
+// whole, e.g. v = (_Tagged_union V){ .f = 1.5f }.
 _Tagged_union Value {
   int as_int;
   float as_float;
@@ -28,9 +30,9 @@ _Static_assert(_Get_tag(_Tagged_union Value, as_float) == 1, "tag as_float");
 static _Tagged_union Value make(int t) {
   _Tagged_union Value v;
   if (t) {
-    v.as_float = 3.5f;
+    v = (_Tagged_union Value){ .as_float = 3.5f };
   } else {
-    v.as_int = 42;
+    v = (_Tagged_union Value){ .as_int = 42 };
   }
   return v;
 }
@@ -38,20 +40,18 @@ static _Tagged_union Value make(int t) {
 static int take(_Tagged_union Value v) { return (int)_Tag_of(v); }
 
 int main(void) {
-  _Tagged_union Value a;
-  a.as_int = 5;
+  _Tagged_union Value a = { .as_int = 5 };
   if (_Tag_of(a) != _Get_tag(_Tagged_union Value, as_int)) return 1;
   if (take(a) != 0) return 2;
   if (a.as_int != 5) return 3;
 
-  a.as_float = 1.25f;
+  a = (_Tagged_union Value){ .as_float = 1.25f };
   if (_Tag_of(a) != 1) return 4;
   if (a.as_float != 1.25f) return 5;
 
-  a.as_int = 40;
-  a.as_int += 2;
+  a = (_Tagged_union Value){ .as_int = 42 };
   if (a.as_int != 42) return 6;
-  a.as_int++;
+  a = (_Tagged_union Value){ .as_int = a.as_int + 1 };
   if (a.as_int != 43) return 7;
   if (_Tag_of(a) != 0) return 8;
 
@@ -67,18 +67,18 @@ int main(void) {
   if (_Tag_of(e) != 0 || e.as_int != 43) return 12;
 
   _Tagged_union Value arr[3];
-  arr[0].as_int = 1;
-  arr[1].as_float = 1.0f;
+  arr[0] = (_Tagged_union Value){ .as_int = 1 };
+  arr[1] = (_Tagged_union Value){ .as_float = 1.0f };
   if (_Tag_of(arr[0]) != 0 || arr[0].as_int != 1) return 13;
   if (_Tag_of(arr[1]) != 1 || arr[1].as_float != 1.0f) return 14;
 
   _Tagged_union Value *p = &a;
   if (_Tag_of(*p) != 0 || p->as_int != 43) return 15;
-  p->as_float = 0.5f;
+  *p = (_Tagged_union Value){ .as_float = 0.5f };
   if (_Tag_of(a) != 1 || a.as_float != 0.5f) return 16;
 
   _Tagged_union Nested n;
-  n.inner.as_int = 3;
+  n = (_Tagged_union Nested){ .inner = { .as_int = 3 } };
   if (_Tag_of(n.inner) != 0 || n.inner.as_int != 3) return 17;
 
   const _Tagged_union Value q = { .as_int = 9 };

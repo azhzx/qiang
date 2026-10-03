@@ -129,7 +129,7 @@ unions:
 ```c
 _Tagged_union Value { int as_int; float as_float; };
 _Tagged_union Value x = { .as_int = 100 };
-x.as_float = 1.5f;                  // also sets the tag
+x = (_Tagged_union Value){ .as_float = 1.5f };   // sets the tag
 switch (_Tag_of(x)) {
   case _Get_tag(_Tagged_union Value, as_int): break;
   case _Get_tag(_Tagged_union Value, as_float): break;
@@ -139,9 +139,10 @@ switch (_Tag_of(x)) {
 - The tag is a synthetic `int` at offset 0 and the members overlap after
   it, so the layout is `struct { int tag; union { members } payload; }` with
   natural alignment.
-- A store through a member also writes the tag; reading a member whose tag
-  is not current is undefined behaviour (no runtime check), and `&x.m`
-  bypasses the tag.
+- A member cannot be assigned directly; change the value as a whole, e.g.
+  `x = (_Tagged_union T){ .m = v };`. Reading a member whose tag is not
+  current is undefined behaviour (no runtime check), and `&x.m` bypasses the
+  tag.
 - An initializer must name a member; a positional or empty list is
   diagnosed.
 - Only `_Tagged_union Tag` names the type. clang implements none of this, so
