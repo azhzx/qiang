@@ -95,6 +95,8 @@ pub fn collect_locals(s : TStmt, out : Array[(String, CType, Int)]) -> Unit {
     KSCaseMark(_, _, b) => collect_locals(b, out)
     KSLabel(_, b) => collect_locals(b, out)
     KSGotoPtr(e) => collect_expr_locals(e, out)
+    // A _Defer body can declare locals of its own.
+    KSDefer(b) => collect_locals(b, out)
     _ => ()
   }
 }

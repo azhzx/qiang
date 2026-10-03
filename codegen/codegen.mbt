@@ -1518,6 +1518,7 @@ fn collect_labels(s : @sema.TStmt, out : Array[String]) -> Unit {
         None => ()
       }
     }
+    @sema.KSDefer(b) => collect_labels(b, out)
     _ => ()
   }
 }
