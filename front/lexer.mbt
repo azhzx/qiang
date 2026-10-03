@@ -121,6 +121,7 @@ pub fn is_keyword(s : String) -> Bool {
 pub fn is_c23_keyword(s : String) -> Bool {
   match s {
     "bool"
+    | "char8_t"
     | "true"
     | "false"
     | "nullptr"
@@ -222,6 +223,48 @@ fn Scanner::read_while(self : Scanner, pred : (Char) -> Bool) -> String {
     }
   }
   sb.to_string()
+}
+
+///|
+// Scan a numeric literal, allowing a C23 digit separator (') only when it
+// sits between two digits, so `1'a'` is still `1` followed by a character
+// literal. The separators are dropped from the returned text.
+fn Scanner::read_number(self : Scanner) -> String {
+  let sb = StringBuilder::new()
+  let mut is_hex = false
+  let mut is_bin = false
+  let mut prev_dig = false
+  let mut go = true
+  while go {
+    match self.src {
+      [c, ..] if is_num_char(c) => {
+        sb.write_char(c)
+        if c == 'x' || c == 'X' {
+          is_hex = true
+        } else if c == 'b' || c == 'B' {
+          is_bin = true
+        }
+        prev_dig = num_digit_in(c, is_hex, is_bin)
+        self.bump(1)
+      }
+      ['\'', c, ..] if prev_dig && num_digit_in(c, is_hex, is_bin) =>
+        self.bump(1)
+      _ => go = false
+    }
+  }
+  sb.to_string()
+}
+
+///|
+// Is `c` a digit in the base the numeric literal has selected so far?
+fn num_digit_in(c : Char, is_hex : Bool, is_bin : Bool) -> Bool {
+  if is_bin {
+    c == '0' || c == '1'
+  } else if is_hex {
+    is_digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+  } else {
+    is_digit(c)
+  }
 }
 
 ///|
@@ -410,7 +453,7 @@ fn Scanner::next(self : Scanner) -> Token {
       )
     }
     [c, ..] if is_digit(c) => {
-      let raw = self.read_while(is_num_char)
+      let raw = self.read_number()
       let (text, imag) = split_imag(raw)
       mk(
         if imag {
@@ -425,7 +468,7 @@ fn Scanner::next(self : Scanner) -> Token {
       )
     }
     ['.', c, ..] if is_digit(c) => {
-      let raw = self.read_while(is_num_char)
+      let raw = self.read_number()
       let (text, imag) = split_imag(raw)
       mk(if imag { ImagLit(text) } else { FloatLit(text) }, line, col)
     }

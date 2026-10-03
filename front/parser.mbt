@@ -135,6 +135,7 @@ fn is_basic_type_kw(k : String) -> Bool {
     | "__signed__"
     | "__auto_type"
     | "bool"
+    | "char8_t"
     | "__builtin_va_list"
     | "__builtin_ms_va_list" => true
     _ => false
@@ -306,7 +307,9 @@ fn Parser::parse_attribute(self : Parser) -> String {
 fn Parser::skip_attrs(self : Parser) -> Unit {
   let mut go = true
   while go {
-    if self.at_kw("__attribute__") || self.at_kw("__attribute") {
+    if self.at_c23_attr() {
+      let _ = self.parse_c23_attrs()
+    } else if self.at_kw("__attribute__") || self.at_kw("__attribute") {
       let _ = self.parse_attribute()
     } else if self.at_kw("__extension__") {
       self.pos = self.pos + 1

@@ -66,6 +66,16 @@ test "sema: typedef redefinition and shadowing" {
 }
 
 ///|
+test "sema: C23 char8_t is an unsigned 8-bit type" {
+  let tu = @front.parse(
+    "char8_t c = 65; int main() { return (int)c - 65; }",
+    mode=@front.C23,
+  )
+  let r = check(tu)
+  assert_eq(r.diags.length(), 0)
+}
+
+///|
 test "sema: diagnostics carry a position" {
   let tu = @front.parse("int main() {\n  int x;\n  return y;\n}")
   let r = check(tu)

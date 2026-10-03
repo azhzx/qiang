@@ -94,6 +94,7 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
           "float" => base = Some(CFloat)
           "double" => base = Some(CDouble)
           "_Bool" | "bool" => base = Some(CBool)
+          "char8_t" => base = Some(CChar(false))
           "_Complex" | "_Imaginary" => complex = true
           "__int128" => base = Some(CBitInt(128))
           "__builtin_va_list" | "__builtin_ms_va_list" =>

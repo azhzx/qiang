@@ -16,7 +16,12 @@ pass=0
 fail=0
 for c in "$here"/tests/*.c; do
   base=$(basename "$c" .c)
-  clang "$c" -o "$tmp/$base.ref"
+  # A fixture may pin the language mode with a `// std=c23` first line.
+  std=""
+  case "$(head -1 "$c")" in
+    *"std=c23"*) std="-std=c23" ;;
+  esac
+  clang $std "$c" -o "$tmp/$base.ref"
   qpcc_src=$c
   if [ "$base" = "stdlib_abs" ]; then
     clang -E -P -nostdinc -I "$here/include/qbe" "$c" > "$tmp/$base.i"
@@ -26,7 +31,7 @@ for c in "$here"/tests/*.c; do
   "$tmp/$base.ref" >"$tmp/$base.ref.out" 2>&1
   refcode=$?
   set -e
-  if ! "$exe" "$qpcc_src" -o "$tmp/$base.o" 2>"$tmp/$base.err"; then
+  if ! "$exe" "$qpcc_src" $std -o "$tmp/$base.o" 2>"$tmp/$base.err"; then
     echo "FAIL $base (qpcc compile)"
     fail=$((fail + 1))
     continue

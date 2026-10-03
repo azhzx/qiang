@@ -72,6 +72,15 @@ test "front: C23 typeof_unqual, alignas and alignof" {
 }
 
 ///|
+test "front: C23 char8_t, digit separators and [[fallthrough]]" {
+  let _tu = parse(
+    "int main() { char8_t c = 65; int x = 1'000; int y = 0xFF'FF; double d = 1'0.5; switch (x) { case 1: [[fallthrough]]; default: break; } return (int)c + x + y + (int)d; }",
+    mode=C23,
+  )
+  assert_true(true)
+}
+
+///|
 test "front: C23 attribute before a statement declaration" {
   let _tu = parse(
     "int main() { [[maybe_unused]] int y = 0; return y; }",
