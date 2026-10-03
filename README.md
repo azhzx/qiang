@@ -90,28 +90,36 @@ Known limitations:
 
 ## C2y status
 
-C2y syntax is opt-in through \`-std=c2y\`; C11 and C23 are unchanged.
+C2y syntax is opt-in through `-std=c2y`; C11 and C23 are unchanged.
 
 Supported:
 
-- \`_Maxof(type-name)\` / \`_Minof(type-name)\` (N3628): an integer type is
-  required (\`_Bool\` is rejected) and the result is a constant of that type.
-- \`_Countof(expr)\` / \`_Countof(type-name)\` (N3369): the operand must have
+- `_Maxof(type-name)` / `_Minof(type-name)` (N3628): an integer type is
+  required (`_Bool` is rejected) and the result is a constant of that type.
+- `_Countof(expr)` / `_Countof(type-name)` (N3369): the operand must have
   array type and the result is the element count.
-- Named loops (N3355): a \`label:\` on a loop or switch, and
-  \`break label;\` / \`continue label;\`. A chain of labels names the same
+- Named loops (N3355): a `label:` on a loop or switch, and
+  `break label;` / `continue label;`. A chain of labels names the same
   statement, and a duplicate label on a nested loop binds to the innermost.
-- \`_Defer\` statements (TS 25755 / N3590): the deferred statement runs when
-  its enclosing block is left, in reverse order, on any exit (falling off the
-  end, \`return\`, \`break\`, \`continue\`, \`goto\` out). A jump that would leave
-  the \`_Defer\` statement itself, and a \`goto\` into it, are diagnosed.
+- `_Defer` statements (TS 25755 / N3590): the deferred statement runs when
+  its enclosing block is left, in reverse order, on any exit (falling off
+  the end, `return`, `break`, `continue`, `goto` out). A jump that would
+  leave the `_Defer` statement itself, and a `goto` into it, are diagnosed.
 
-The \`defer\` and \`countof\` spellings are provided by the hand-written
-\`qpcc/include/qbe/stddefer.h\` (\`defer\` -> \`_Defer\`) and
-\`stdcountof.h\` (\`countof\` -> \`_Countof\`); pass
-\`clang -E -P -I <qpcc>/qpcc/include/qbe\` to the external preprocessor to use
-them, as \`qpcc/test.sh\` does for \`std=c2y\` fixtures. QPCC itself only
-recognizes the underscore keywords.
+The friendly spellings live in hand-written headers under
+`qpcc/include/qbe/`:
+
+| Header | Macro |
+| --- | --- |
+| `stdcountof.h` | `countof` -> `_Countof` (N3469) |
+| `stddefer.h` | `defer` -> `_Defer` (TS 25755) |
+| `stdmaxof.h` | `maxof` -> `_Maxof` (QPCC extension) |
+| `stdminof.h` | `minof` -> `_Minof` (QPCC extension) |
+
+The last two have no WG14 proposal behind them; they are a QPCC convenience.
+Pass `-I <qpcc>/qpcc/include/qbe` to the external preprocessor, as
+`qpcc/test.sh` does for `std=c2y` fixtures. QPCC itself only recognizes the
+underscore keywords.
 
 ## GNU extensions
 
