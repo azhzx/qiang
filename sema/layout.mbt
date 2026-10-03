@@ -15,6 +15,9 @@ pub struct Layout {
   size : Int
   align : Int
   enum_vals : Array[(String, Int64)]
+  // For an enum, the C23 underlying integer type (default int); the enum is
+  // represented by it. None for structs and unions.
+  enum_ty : CType?
 }
 
 ///|

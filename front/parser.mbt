@@ -530,12 +530,18 @@ fn Parser::parse_declspec(self : Parser) -> DeclSpec {
         } else if k == "enum" {
           self.pos = self.pos + 1
           let tag = self.eat_ident()
+          // C23 fixed underlying type: enum E : TYPE { ... }
+          let underlying = if self.eat_punct(":") {
+            Some(self.parse_declspec())
+          } else {
+            None
+          }
           let body = if self.at_punct("{") {
             self.parse_enum_body()
           } else {
             []
           }
-          type_specs.push(TEnum(tag, body))
+          type_specs.push(TEnum(tag, body, underlying))
         } else if k == "typeof" ||
           k == "__typeof" ||
           k == "__typeof__" ||

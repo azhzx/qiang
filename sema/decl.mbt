@@ -154,8 +154,12 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
         base = Some(CStruct(resolve_aggregate(ctx, tag, body, false)))
       @front.TUnion(tag, body) =>
         base = Some(CUnion(resolve_aggregate(ctx, tag, body, true)))
-      @front.TEnum(tag, items) =>
-        base = Some(CEnum(define_enum(ctx, tag, items)))
+      @front.TEnum(tag, items, underlying) => {
+        base = Some(define_enum(ctx, tag, items, underlying))
+        // An enum is represented by its underlying integer type; keep the
+        // suffix logic below from re-applying "signed"/"unsigned" to it.
+        from_typedef = true
+      }
       @front.TTypedefName(n) =>
         match ctx.scopes.lookup(n) {
           Some(s) => {
@@ -367,6 +371,7 @@ fn define_aggregate(
                 size,
                 align: maxa,
                 enum_vals: [],
+                enum_ty: None,
               }
               return i
             }
@@ -376,7 +381,15 @@ fn define_aggregate(
     }
   }
   let idx = ctx.layouts.length()
-  ctx.layouts.push({ name, is_union, fields, size, align: maxa, enum_vals: [], })
+  ctx.layouts.push({
+    name,
+    is_union,
+    fields,
+    size,
+    align: maxa,
+    enum_vals: [],
+    enum_ty: None,
+  })
   match tag {
     Some(t) => ctx.scopes.define_tag(t, idx)
     None => ()
@@ -385,7 +398,42 @@ fn define_aggregate(
 }
 
 ///|
-fn define_enum(ctx : Ctx, tag : String?, items : Array[@front.EnumItem]) -> Int {
+fn define_enum(
+  ctx : Ctx,
+  tag : String?,
+  items : Array[@front.EnumItem],
+  underlying : @front.DeclSpec?,
+) -> CType {
+  // A reference to an already-defined tag (`enum E x;`) has no body and no
+  // underlying specifier: return the type recorded when E was defined.
+  if items.length() == 0 {
+    match tag {
+      Some(t) =>
+        match ctx.scopes.lookup_tag(t) {
+          Some(i) =>
+            match ctx.layouts[i].enum_ty {
+              Some(u) => return u
+              None => ()
+            }
+          None => ()
+        }
+      None => ()
+    }
+  }
+  // C23 `enum E : T` fixes the underlying type; otherwise it is int. The enum
+  // is represented by that integer type so layout and code generation reuse
+  // the existing integer support.
+  let u0 = match underlying {
+    Some(spec) => declspec_to_type(spec, ctx)
+    None => CInt(false)
+  }
+  let u = if is_integer(u0) {
+    u0
+  } else {
+    ctx.diags.error("enum underlying type must be an integer type")
+    CInt(false)
+  }
+
   let vals : Array[(String, Int64)] = []
   let mut next : Int64 = 0L
   for it in items {
@@ -398,7 +446,7 @@ fn define_enum(ctx : Ctx, tag : String?, items : Array[@front.EnumItem]) -> Int 
       name: it.name,
       gname: "",
       kind: SymEnumConst,
-      ty: CInt(false),
+      ty: u,
       storage: StNone,
       value: v,
     })
@@ -412,13 +460,14 @@ fn define_enum(ctx : Ctx, tag : String?, items : Array[@front.EnumItem]) -> Int 
     },
     is_union: false,
     fields: [],
-    size: 4,
-    align: 4,
+    size: size_of_ty(u, ctx.layouts),
+    align: align_of_ty(u, ctx.layouts),
     enum_vals: vals,
+    enum_ty: Some(u),
   })
   match tag {
     Some(t) => ctx.scopes.define_tag(t, idx)
     None => ()
   }
-  idx
+  u
 }
