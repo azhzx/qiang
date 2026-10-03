@@ -37,13 +37,17 @@ for c in "$here"/tests/*.c; do
       exp=$(printf '%s\n' "$hdr" | sed -n 's/.*expect-exit[^0-9-]*\([-0-9]*\).*/\1/p' | head -1)
       ;;
   esac
+  extra=""
+  case "$hdr" in
+    *"tagged"*) extra="-f_tagged_union" ;;
+  esac
   qpcc_src=$c
   if [ -n "$inc" ]; then
     clang -E -P $std -I "$inc" "$c" > "$tmp/$base.i"
     qpcc_src=$tmp/$base.i
   fi
   if [ -n "$exp" ]; then
-    if ! "$exe" "$qpcc_src" $std -o "$tmp/$base.o" 2>"$tmp/$base.err"; then
+    if ! "$exe" "$qpcc_src" $std $extra -o "$tmp/$base.o" 2>"$tmp/$base.err"; then
       echo "FAIL $base (qpcc compile)"
       fail=$((fail + 1))
       continue
@@ -71,7 +75,7 @@ for c in "$here"/tests/*.c; do
   "$tmp/$base.ref" >"$tmp/$base.ref.out" 2>&1
   refcode=$?
   set -e
-  if ! "$exe" "$qpcc_src" $std -o "$tmp/$base.o" 2>"$tmp/$base.err"; then
+  if ! "$exe" "$qpcc_src" $std $extra -o "$tmp/$base.o" 2>"$tmp/$base.err"; then
     echo "FAIL $base (qpcc compile)"
     fail=$((fail + 1))
     continue
