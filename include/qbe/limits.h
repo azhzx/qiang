@@ -1,3 +1,6 @@
+#ifndef __QPCC_QBE_LIMITS_H
+#define __QPCC_QBE_LIMITS_H
+
 #define CHAR_BIT 8
 #define SCHAR_MIN (-128)
 #define SCHAR_MAX 127
@@ -15,3 +18,5 @@
 #define ULLONG_MAX 18446744073709551615ULL
 #define CHAR_MIN (-128)
 #define CHAR_MAX 127
+
+#endif /* __QPCC_QBE_LIMITS_H */

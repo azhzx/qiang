@@ -1,3 +1,6 @@
+#ifndef __QPCC_QBE_STDIO_H
+#define __QPCC_QBE_STDIO_H
+
 #include <stddef.h>
 typedef struct _IO_FILE FILE;
 extern FILE *__stdinp;
@@ -37,3 +40,5 @@ int rename(char *, char *);
 #ifndef EOF
 #define EOF (-1)
 #endif
+
+#endif /* __QPCC_QBE_STDIO_H */

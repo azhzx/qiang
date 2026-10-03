@@ -1,3 +1,6 @@
+#ifndef __QPCC_QBE_GETOPT_H
+#define __QPCC_QBE_GETOPT_H
+
 extern char *optarg;
 extern int optind;
 extern int opterr;
@@ -8,3 +11,5 @@ int getopt_long(int, char **, char *, struct option *, int *);
 #define no_argument 0
 #define required_argument 1
 #define optional_argument 2
+
+#endif /* __QPCC_QBE_GETOPT_H */

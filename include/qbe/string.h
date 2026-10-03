@@ -1,3 +1,6 @@
+#ifndef __QPCC_QBE_STRING_H
+#define __QPCC_QBE_STRING_H
+
 #include <stddef.h>
 void *memcpy(void *, void *, size_t);
 void *memmove(void *, void *, size_t);
@@ -14,3 +17,5 @@ char *strrchr(char *, int);
 char *strstr(char *, char *);
 char *strdup(char *);
 char *strerror(int);
+
+#endif /* __QPCC_QBE_STRING_H */

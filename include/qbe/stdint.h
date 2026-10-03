@@ -1,3 +1,6 @@
+#ifndef __QPCC_QBE_STDINT_H
+#define __QPCC_QBE_STDINT_H
+
 typedef signed char int8_t;
 typedef unsigned char uint8_t;
 typedef short int16_t;
@@ -22,3 +25,5 @@ typedef unsigned long uintmax_t;
 #define INT64_MIN (-9223372036854775807L-1)
 #define INT64_MAX 9223372036854775807L
 #define UINT64_MAX 18446744073709551615UL
+
+#endif /* __QPCC_QBE_STDINT_H */

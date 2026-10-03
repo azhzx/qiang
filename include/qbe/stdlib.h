@@ -1,3 +1,6 @@
+#ifndef __QPCC_QBE_STDLIB_H
+#define __QPCC_QBE_STDLIB_H
+
 #include <stddef.h>
 void *malloc(size_t);
 void *calloc(size_t, size_t);
@@ -14,3 +17,5 @@ double strtod(char *, char **);
 void qsort(void *, size_t, size_t, int (*)(void *, void *));
 char *getenv(char *);
 int atexit(void (*)(void));
+
+#endif /* __QPCC_QBE_STDLIB_H */
