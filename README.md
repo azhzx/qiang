@@ -58,6 +58,65 @@ convenience.
 - Some aggregate initializer edge cases are incomplete.
 - Diagnostics carry statement-level positions.
 
+## C23 status
+
+`-std=c23` enables C23 syntax; the default standard is C11. Each item below
+was checked end to end (compile, link with clang, run) unless noted otherwise.
+
+Supported:
+
+- `bool`/`true`/`false`, `nullptr`
+- `constexpr`, `_BitInt(N)`
+- `typeof_unqual`, `alignas`/`alignof`
+- C23 attributes (`[[maybe_unused]]`, `[[noreturn]]`, ...)
+- `static_assert` with literal constant expressions
+- binary integer literals (`0b1010`) and `u8'x'` character literals
+- `auto` type inference
+
+Not supported (parse error):
+
+- `char8_t`
+- digit separators (`1'000`)
+- fixed underlying enum types (`enum E : unsigned char`)
+- `[[fallthrough]]` in statement position
+
+Known limitations:
+
+- `static_assert` does not evaluate named constants: `const int N = 3;
+  static_assert(N == 3, "N")` fails, and `constexpr int N = 3` behaves the
+  same, so `constexpr` currently acts as a constant expression in ordinary
+  code but not in `static_assert`.
+- The C23 tests in `qpcc/front/front_wbtest.mbt` cover parsing only, not code
+  generation; the list above is from manual end-to-end checks.
+
+## GNU extensions
+
+Checked the same way. Supported:
+
+- `__attribute__((unused))`, `__attribute__((noreturn))`
+- `typeof`/`__typeof`/`__typeof__`, `__alignof__`
+- statement expressions (`({ ... })`), including inside macros
+- `__builtin_offsetof`, `__builtin_types_compatible_p`,
+  `__builtin_constant_p`, `__builtin_expect`, `__builtin_unreachable`
+- case ranges (`case 1 ... 5:`), `__extension__`, GNU `a ?: b`
+- `__restrict`/`__const`/`__volatile`/`__signed`/`__inline`
+- `__int128`, `__thread`
+- `__real__`/`__imag__`
+- `<stdarg.h>` (`va_list`, `va_start`, `va_arg`, `va_end`) after the
+  external preprocessor
+
+Parsed but ignored -- they do not change layout:
+
+- `__attribute__((packed))`
+- `__attribute__((aligned(N)))`
+
+Not supported:
+
+- `__auto_type` (rejected with an explicit error)
+- assembly labels (`int f(void) __asm__("g");`) and nested functions
+- `__builtin_va_list` as an assignable value (`aq = ap` hits an internal
+  error)
+
 ## Testing
 
 - `sh qpcc/test.sh` — clang oracle over `qpcc/tests/*.c` (73 fixtures).
