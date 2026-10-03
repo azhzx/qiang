@@ -121,6 +121,31 @@ Pass `-I <qpcc>/qpcc/include/qbe` to the external preprocessor, as
 `qpcc/test.sh` does for `std=c2y` fixtures. QPCC itself only recognizes the
 underscore keywords.
 
+## _Tagged_union status
+
+`-f_tagged_union` enables a QPCC extension (no WG14 proposal) for tagged
+unions:
+
+```c
+_Tagged_union Value { int as_int; float as_float; };
+_Tagged_union Value x = { .as_int = 100 };
+x.as_float = 1.5f;                  // also sets the tag
+switch (_Tag_of(x)) {
+  case _Get_tag(_Tagged_union Value, as_int): break;
+  case _Get_tag(_Tagged_union Value, as_float): break;
+}
+```
+
+- The tag is a synthetic `int` at offset 0 and the members overlap after
+  it, so the layout is `struct { int tag; union { members } payload; }` with
+  natural alignment.
+- A store through a member also writes the tag; reading a member whose tag
+  is not current is undefined behaviour (no runtime check), and `&x.m`
+  bypasses the tag.
+- An initializer must name a member; a positional or empty list is
+  diagnosed.
+- Only `_Tagged_union Tag` names the type. clang implements none of this, so
+  its fixtures are QPCC-only (`// expect-exit N`).
 ## GNU extensions
 
 Checked the same way. Supported:
@@ -151,7 +176,7 @@ Not supported:
 
 ## Testing
 
-- `sh qpcc/test.sh` — clang oracle over `qpcc/tests/*.c` (144 fixtures).
+- `sh qpcc/test.sh` — clang oracle over `qpcc/tests/*.c` (147 fixtures).
 - `moon test --target native qpcc/front qpcc/sema` — front-end and sema tests.
 - `qpcc/chibicc-tests/` — a vendored chibicc subset used for parsing and
   end-to-end checks.
