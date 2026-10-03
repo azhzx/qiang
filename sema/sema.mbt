@@ -305,9 +305,11 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
   match d.kind {
     @front.EDecl(spec, decls) => {
       let base = declspec_to_type(spec, ctx)
+      let auto_ty = has_auto_type(spec)
       let is_td = has_storage(spec, "typedef")
       for idecl in decls {
-        let ty = build_type(idecl.decl, base, ctx)
+        let b = if auto_ty { infer_auto_type(decls, idecl, ctx) } else { base }
+        let ty = build_type(idecl.decl, b, ctx)
         match decl_name(idecl.decl) {
           Some(n) =>
             if is_td {

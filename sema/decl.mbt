@@ -1,4 +1,51 @@
 ///|
+// Is this declaration specifier an inferred type? Both C23 `auto` (which the
+// parser rewrites) and the GNU `__auto_type` arrive as `__auto_type`.
+pub fn has_auto_type(spec : @front.DeclSpec) -> Bool {
+  for ts in spec.type_specs {
+    match ts {
+      @front.TKw("__auto_type") => return true
+      _ => ()
+    }
+  }
+  false
+}
+
+///|
+// Infer the declared type from the initializer. C23 requires a single
+// declarator, no pointer/array/function declarator, and an initializer.
+pub fn infer_auto_type(
+  decls : Array[@front.InitDeclarator],
+  idecl : @front.InitDeclarator,
+  ctx : Ctx,
+) -> CType {
+  if decls.length() != 1 {
+    ctx.diags.error("auto requires exactly one declarator")
+    return CInt(false)
+  }
+  match idecl.decl {
+    @front.DName(_) => ()
+    _ => {
+      ctx.diags.error(
+        "auto cannot be used with a pointer, array or function declarator",
+      )
+      return CInt(false)
+    }
+  }
+  match idecl.init {
+    Some(@front.IExpr(e)) => check_expr(e, ctx).ty
+    Some(@front.IList(_)) => {
+      ctx.diags.error("auto cannot be initialized with a braced initializer")
+      CInt(false)
+    }
+    None => {
+      ctx.diags.error("auto requires an initializer")
+      CInt(false)
+    }
+  }
+}
+
+///|
 /// Resolve a declarator tree against a base type.
 pub fn build_type(d : @front.Declarator, base : CType, ctx : Ctx) -> CType {
   match d {
@@ -99,7 +146,8 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
           "__int128" => base = Some(CBitInt(128))
           "__builtin_va_list" | "__builtin_ms_va_list" =>
             base = Some(CPtr(CVoid))
-          "__auto_type" => ctx.diags.error("__auto_type is not supported")
+          // Handled by the declaration sites via has_auto_type/infer_auto_type.
+          "__auto_type" => ()
           _ => ()
         }
       @front.TStruct(tag, body) =>

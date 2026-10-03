@@ -591,6 +591,20 @@ fn Parser::parse_declspec(self : Parser) -> DeclSpec {
       _ => go = false
     }
   }
+  // C23 `auto` with no type specifier infers the type from the initializer.
+  // Mark it with the same internal specifier that `__auto_type` produces so
+  // the semantic analyser handles both through one path.
+  if self.mode == C23 && type_specs.length() == 0 {
+    let mut is_auto = false
+    for s in storage {
+      if s == "auto" {
+        is_auto = true
+      }
+    }
+    if is_auto {
+      type_specs.push(TKw("__auto_type"))
+    }
+  }
   { storage, qualifiers, type_specs, func_specs, align, attrs, }
 }
 

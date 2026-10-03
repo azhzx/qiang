@@ -236,9 +236,11 @@ fn check_local_decl(
   out : Array[TStmt],
 ) -> Unit {
   let base = declspec_to_type(spec, ctx)
+  let auto_ty = has_auto_type(spec)
   let is_td = has_storage(spec, "typedef")
   for idecl in decls {
-    let mut ty = build_type(idecl.decl, base, ctx)
+    let b = if auto_ty { infer_auto_type(decls, idecl, ctx) } else { base }
+    let mut ty = build_type(idecl.decl, b, ctx)
     match idecl.init {
       Some(init) => ty = complete_array(ty, init, ctx)
       None => ()
