@@ -1,6 +1,9 @@
 ///|
 pub(all) enum SymKind {
   SymVar
+  // A C23 constexpr object: still an object, but usable in constant
+  // expressions (its initializer is folded into Symbol.value).
+  SymConstVar
   SymFunc
   SymTypedef
   SymEnumConst

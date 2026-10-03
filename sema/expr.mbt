@@ -180,7 +180,7 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
           match sym.kind {
             SymEnumConst => mk_expr(TInt(sym.value), sym.ty, false)
             SymFunc => mk_expr(TVar(n), sym.ty, false)
-            SymVar =>
+            SymVar | SymConstVar =>
               mk_expr(
                 TVar(if sym.gname != "" { sym.gname } else { n }),
                 sym.ty,

@@ -43,7 +43,7 @@ pub fn is_const_expr(e : @front.Expr, ctx : Ctx) -> Bool {
       match ctx.scopes.lookup(n) {
         Some(s) =>
           match s.kind {
-            SymEnumConst => true
+            SymEnumConst | SymConstVar => true
             _ => false
           }
         None => false

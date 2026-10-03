@@ -290,13 +290,21 @@ fn check_local_decl(
               is_export: false,
               align: al,
             })
+            let is_cexpr = has_qualifier(spec, "constexpr")
             ctx.scopes.define({
               name: n,
               gname,
-              kind: SymVar,
+              kind: if is_cexpr {
+                SymConstVar
+              } else {
+                SymVar
+              },
               ty,
               storage,
-              value: 0L,
+              value: match init0 {
+                Some(v) => v
+                None => 0L
+              },
             })
           } else {
             match idecl.init {
@@ -314,13 +322,37 @@ fn check_local_decl(
               }
               None => out.push({ kind: KSDecl(n, ty, None, al), })
             }
+            let is_cexpr = has_qualifier(spec, "constexpr")
+            let cval : Int64 = if is_cexpr {
+              match idecl.init {
+                Some(@front.IExpr(e)) =>
+                  if is_const_expr(e, ctx) {
+                    const_eval_int(e, ctx)
+                  } else {
+                    ctx.diags.error(
+                      "constexpr initializer is not a constant expression",
+                    )
+                    0L
+                  }
+                _ => {
+                  ctx.diags.error("constexpr requires a constant initializer")
+                  0L
+                }
+              }
+            } else {
+              0L
+            }
             ctx.scopes.define({
               name: n,
               gname: "",
-              kind: SymVar,
+              kind: if is_cexpr {
+                SymConstVar
+              } else {
+                SymVar
+              },
               ty,
               storage,
-              value: 0L,
+              value: cval,
             })
           }
         }

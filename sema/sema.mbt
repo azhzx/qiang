@@ -37,6 +37,16 @@ fn has_storage(spec : @front.DeclSpec, s : String) -> Bool {
 }
 
 ///|
+fn has_qualifier(spec : @front.DeclSpec, q : String) -> Bool {
+  for x in spec.qualifiers {
+    if x == q {
+      return true
+    }
+  }
+  false
+}
+
+///|
 fn storage_of(spec : @front.DeclSpec) -> Storage {
   if has_storage(spec, "typedef") {
     StTypedef
@@ -319,13 +329,37 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
                 value: 0L,
               })
             } else {
+              let is_cexpr = has_qualifier(spec, "constexpr")
+              let cval : Int64 = if is_cexpr {
+                match idecl.init {
+                  Some(@front.IExpr(e)) =>
+                    if is_const_expr(e, ctx) {
+                      const_eval_int(e, ctx)
+                    } else {
+                      ctx.diags.error(
+                        "constexpr initializer is not a constant expression",
+                      )
+                      0L
+                    }
+                  _ => {
+                    ctx.diags.error("constexpr requires a constant initializer")
+                    0L
+                  }
+                }
+              } else {
+                0L
+              }
               ctx.scopes.define({
                 name: n,
                 gname: "",
-                kind: SymVar,
+                kind: if is_cexpr {
+                  SymConstVar
+                } else {
+                  SymVar
+                },
                 ty,
                 storage: storage_of(spec),
-                value: 0L,
+                value: cval,
               })
               let init = match idecl.init {
                 Some(@front.IExpr(e)) =>
