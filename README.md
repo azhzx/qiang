@@ -145,8 +145,9 @@ switch (_Tag_of(x)) {
   tag.
 - An initializer must name a member; a positional or empty list is
   diagnosed.
-- Only `_Tagged_union Tag` names the type. clang implements none of this, so
-  its fixtures are QPCC-only (`// expect-exit N`).
+- The tag is optional, so `typedef _Tagged_union { ... } Value;` defines an
+  anonymous one and `Value` stands for the type. clang implements none of
+  this, so its fixtures are QPCC-only (`// expect-exit N`).
 ## GNU extensions
 
 Checked the same way. Supported:
@@ -177,7 +178,7 @@ Not supported:
 
 ## Testing
 
-- `sh qpcc/test.sh` — clang oracle over `qpcc/tests/*.c` (148 fixtures).
+- `sh qpcc/test.sh` — clang oracle over `qpcc/tests/*.c` (149 fixtures).
 - `moon test --target native qpcc/front qpcc/sema` — front-end and sema tests.
 - `qpcc/chibicc-tests/` — a vendored chibicc subset used for parsing and
   end-to-end checks.

@@ -246,18 +246,22 @@ fn resolve_aggregate(
 /// a freshly defined one.
 fn resolve_tagged_union(
   ctx : Ctx,
-  tag : String,
+  tag : String?,
   body : Array[@front.StructDecl],
 ) -> CType {
   if body.length() == 0 {
-    match ctx.scopes.lookup_tag(tag) {
+    let nm = match tag {
+      Some(t) => t
+      None => ""
+    }
+    match ctx.scopes.lookup_tag(nm) {
       Some(i) =>
         if ctx.layouts[i].tagged {
           return CStruct(i)
         } else {
-          ctx.diags.error("not a _Tagged_union: " + tag)
+          ctx.diags.error("not a _Tagged_union: " + nm)
         }
-      None => ctx.diags.error("unknown _Tagged_union: " + tag)
+      None => ctx.diags.error("unknown _Tagged_union: " + nm)
     }
   }
   define_tagged_union(ctx, tag, body)
@@ -269,7 +273,7 @@ fn resolve_tagged_union(
 /// `struct { int __tag; union { members } __payload; }`.
 fn define_tagged_union(
   ctx : Ctx,
-  tag : String,
+  tag : String?,
   body : Array[@front.StructDecl],
 ) -> CType {
   let fields : Array[Field] = []
@@ -324,7 +328,10 @@ fn define_tagged_union(
   let size = align_up(payload_off + maxsz, align)
   let idx = ctx.layouts.length()
   ctx.layouts.push({
-    name: tag,
+    name: match tag {
+      Some(t) => t
+      None => ""
+    },
     is_union: false,
     fields,
     size,
@@ -335,7 +342,10 @@ fn define_tagged_union(
     payload_off,
     tag_vals,
   })
-  ctx.scopes.define_tag(tag, idx)
+  match tag {
+    Some(t) => ctx.scopes.define_tag(t, idx)
+    None => ()
+  }
   CStruct(idx)
 }
 

@@ -531,10 +531,7 @@ fn Parser::parse_declspec(self : Parser) -> DeclSpec {
           type_specs.push(TUnion(tag, body))
         } else if k == "_Tagged_union" {
           self.pos = self.pos + 1
-          let tag = match self.eat_ident() {
-            Some(t) => t
-            None => self.fail("_Tagged_union needs a tag")
-          }
+          let tag = self.eat_ident()
           let body = if self.at_punct("{") {
             self.parse_struct_body()
           } else {
