@@ -13,7 +13,7 @@ fn put_int(bytes : Array[Byte], off : Int, size : Int, v : Int64) -> Unit {
     if off + i < bytes.length() {
       bytes[off + i] = b
     } else {
-      ensure_len(bytes, off + i)
+      ensure_len(bytes, off + i + 1)
       bytes[off + i] = b
     }
     i = i + 1
@@ -199,6 +199,40 @@ pub fn encode_global_init(
               )
             }
             idx = idx + 1
+          }
+        }
+        CStruct(i) if ctx.layouts[i].tagged => {
+          let lay = ctx.layouts[i]
+          let mut last_tag : Int64? = None
+          for it in items {
+            if it.designators.length() > 0 {
+              match it.designators[0] {
+                @front.DField(n) =>
+                  match tag_of(lay, n) {
+                    Some(tv) =>
+                      match field_of(lay, n) {
+                        Some(f) => {
+                          last_tag = Some(tv)
+                          encode_global_init(
+                            it.init,
+                            f.ty,
+                            off + lay.payload_off + f.offset,
+                            bytes,
+                            relocs,
+                            ctx,
+                          )
+                        }
+                        None => ()
+                      }
+                    None => ()
+                  }
+                _ => ()
+              }
+            }
+          }
+          match last_tag {
+            Some(tv) => put_int(bytes, off, 4, tv)
+            None => ()
           }
         }
         CStruct(i) => {

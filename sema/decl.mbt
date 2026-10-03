@@ -240,6 +240,7 @@ fn resolve_aggregate(
 }
 
 ///|
+
 ///|
 /// Resolve a `_Tagged_union Tag { ... }`: an existing tag with no body, or
 /// a freshly defined one.
@@ -311,8 +312,7 @@ fn define_tagged_union(
         if const_eval_int(e, ctx) == 0L {
           ctx.diags.error("static assertion failed")
         }
-      @front.SAnon(_) =>
-        ctx.diags.error("_Tagged_union members need names")
+      @front.SAnon(_) => ctx.diags.error("_Tagged_union members need names")
       @front.SPragma(_) => ()
     }
   }

@@ -519,7 +519,20 @@ fn check_binary(
     op == "&&" ||
     op == "||"
   if cmp {
-    mk_expr(TBin(op, tl, tr), CInt(false), false)
+    // && and || test their operands as integers, so a float comparison
+    // (which the back end emits in the s class) must be coerced first.
+    if op == "&&" || op == "||" {
+      let as_int = fn(t : TExpr) {
+        if is_integer(t.ty) {
+          t
+        } else {
+          mk_expr(TCast(t), CInt(false), false)
+        }
+      }
+      mk_expr(TBin(op, as_int(tl), as_int(tr)), CInt(false), false)
+    } else {
+      mk_expr(TBin(op, tl, tr), CInt(false), false)
+    }
   } else if op == "<<" || op == ">>" {
     mk_expr(TBin(op, tl, tr), promote_shift_operand(decay(tl.ty)), false)
   } else {
@@ -543,6 +556,7 @@ fn check_binary(
 }
 
 ///|
+
 ///|
 // The 0-based discriminator of a `_Tagged_union` member.
 fn tag_of(layout : Layout, name : String) -> Int64? {

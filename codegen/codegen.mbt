@@ -1164,7 +1164,7 @@ fn Cg::gen_bin(
     let av = c.coerce(a, cls_of(lt), cls)
     let b = c.gen_expr(r)
     let bv = c.coerce(b, cls_of(rt), cls)
-    c.b.cmp(c.fid, cmp_op(op, cls, uns, fl), cls, av, bv)
+    c.b.cmp(c.fid, cmp_op(op, cls, uns, fl), @types.Kw, av, bv)
   } else if op == "<<" || op == ">>" {
     let shift_cls = cls_of(result_ty)
     let a = c.coerce(c.gen_expr(l), cls_of(lt), shift_cls)

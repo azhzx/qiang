@@ -411,30 +411,36 @@ fn check_init_into(
           } else {
             let mut last_tag : Int64? = None
             for it in items {
-              match it.designators {
-                [@front.DField(n), ..] =>
-                  match tag_of(lay, n) {
-                    Some(tv) =>
-                      match field_of(lay, n) {
-                        Some(f) => {
-                          last_tag = Some(tv)
-                          check_init_into(
-                            it.init,
-                            f.ty,
-                            base_off + lay.payload_off + f.offset,
-                            stores,
-                            ctx,
-                          )
+              if it.designators.length() > 0 {
+                match it.designators[0] {
+                  @front.DField(n) =>
+                    match tag_of(lay, n) {
+                      Some(tv) =>
+                        match field_of(lay, n) {
+                          Some(f) => {
+                            last_tag = Some(tv)
+                            check_init_into(
+                              it.init,
+                              f.ty,
+                              base_off + lay.payload_off + f.offset,
+                              stores,
+                              ctx,
+                            )
+                          }
+                          None => ()
                         }
-                        None => ()
-                      }
-                    None =>
-                      ctx.diags.error("no _Tagged_union member named " + n)
-                  }
-                _ =>
-                  ctx.diags.error(
-                    "_Tagged_union initialization needs a member designator",
-                  )
+                      None =>
+                        ctx.diags.error("no _Tagged_union member named " + n)
+                    }
+                  _ =>
+                    ctx.diags.error(
+                      "_Tagged_union initialization needs a member designator",
+                    )
+                }
+              } else {
+                ctx.diags.error(
+                  "_Tagged_union initialization needs a member designator",
+                )
               }
             }
             match last_tag {

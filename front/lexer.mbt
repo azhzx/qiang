@@ -146,6 +146,7 @@ pub fn is_c2y_keyword(s : String) -> Bool {
 }
 
 ///|
+
 ///|
 /// QPCC \`-f_tagged_union\` keywords. Without the flag they are ordinary
 /// identifiers.
@@ -510,7 +511,11 @@ fn Scanner::next(self : Scanner) -> Token {
 }
 
 ///|
-pub fn tokenize(src : String, mode : StdMode, tagged_union? : Bool = false) -> Array[Token] {
+pub fn tokenize(
+  src : String,
+  mode : StdMode,
+  tagged_union? : Bool = false,
+) -> Array[Token] {
   let sc = Scanner::{ src, line: 1, col: 1, mode, tagged_union, }
   let out : Array[Token] = []
   let mut go = true

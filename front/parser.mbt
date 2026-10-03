@@ -1646,7 +1646,11 @@ fn empty_declspec() -> DeclSpec {
 }
 
 ///|
-pub fn parse(src : String, mode? : StdMode = C11, tagged_union? : Bool = false) -> TranslationUnit {
+pub fn parse(
+  src : String,
+  mode? : StdMode = C11,
+  tagged_union? : Bool = false,
+) -> TranslationUnit {
   let toks = tokenize(src, mode, tagged_union~)
   let typedefs : Map[String, Bool] = Map::new()
   for
