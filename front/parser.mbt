@@ -1331,6 +1331,23 @@ fn Parser::parse_unary_expr(self : Parser) -> Expr {
       self.pos = self.pos + 1
       EUnary(k, self.parse_cast_expr())
     }
+    Keyword("_Tag_of") => {
+      self.pos = self.pos + 1
+      self.expect_punct("(")
+      let e = self.parse_expr()
+      self.expect_punct(")")
+      ETagOf(e)
+    }
+    Keyword("_Get_tag") => {
+      self.pos = self.pos + 1
+      self.expect_punct("(")
+      let spec = self.parse_declspec()
+      let d = self.parse_declarator()
+      self.expect_punct(",")
+      let m = self.expect_ident()
+      self.expect_punct(")")
+      EGetTag(spec, d, m)
+    }
     Keyword("sizeof") => {
       self.pos = self.pos + 1
       if self.at_punct("(") {

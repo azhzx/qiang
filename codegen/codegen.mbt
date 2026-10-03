@@ -493,6 +493,26 @@ fn elem_of(ty : @sema.CType) -> @sema.CType {
 }
 
 ///|
+// QPCC -f_tagged_union: find the outermost tagged-union payload member an
+// lvalue stores through, and the discriminator that store must also write.
+fn tagged_lhs(e : @sema.TExpr) -> (@sema.TExpr, Int64)? {
+  match e.kind {
+    @sema.TTaggedMember(b, _, tag) => Some((b, tag))
+    @sema.TMember(b, _) => tagged_lhs(b)
+    @sema.TBitField(b, _, _, _) => tagged_lhs(b)
+    @sema.TIndex(b, _) => tagged_lhs(b)
+    @sema.TDeref(p) => tagged_lhs(p)
+    _ => None
+  }
+}
+
+///|
+fn Cg::store_tag(c : Cg, base : @sema.TExpr, tag : Int64) -> Unit {
+  let a = c.gen_addr(base)
+  c.store_scalar(@sema.CInt(true), c.b.iconst(c.fid, tag), a)
+}
+
+///|
 fn Cg::gen_addr(c : Cg, e : @sema.TExpr) -> Int {
   match e.kind {
     @sema.TVar(n) =>
@@ -501,6 +521,16 @@ fn Cg::gen_addr(c : Cg, e : @sema.TExpr) -> Int {
         None => c.b.global(c.fid, n)
       }
     @sema.TDeref(p) => c.gen_expr(p)
+    @sema.TTaggedMember(b, off, _) => {
+      let a = c.gen_addr(b)
+      c.b.arith(
+        c.fid,
+        @types.Add,
+        @types.Kl,
+        a,
+        c.b.iconst(c.fid, off.to_int64()),
+      )
+    }
     @sema.TMember(b, off) => {
       let a = c.gen_addr(b)
       if off == 0 {
@@ -620,7 +650,7 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
       let addr = c.bitfield_addr(base, off)
       c.bitfield_read(e.ty, addr, bo, bw)
     }
-    @sema.TMember(_, _) => {
+    @sema.TMember(_, _) | @sema.TTaggedMember(_, _, _) => {
       let a = c.gen_addr(e)
       if is_aggregate(e.ty) {
         a
@@ -663,8 +693,9 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
           c.bitfield_read(l.ty, addr, bo, bw)
         }
         _ => {
+          let ta = tagged_lhs(l)
           let a = c.gen_addr(l)
-          if is_complex_ty(l.ty) && !is_composite(r.ty) {
+          let res = if is_complex_ty(l.ty) && !is_composite(r.ty) {
             let elem = elem_of(l.ty)
             let esz = size_of(elem, c.layouts)
             let v = c.convert(c.gen_expr(r), r.ty, elem)
@@ -691,6 +722,11 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
             c.store_scalar(l.ty, vv, a)
             vv
           }
+          match ta {
+            Some((base, tag)) => c.store_tag(base, tag)
+            None => ()
+          }
+          res
         }
       }
     @sema.TComma(a, b) => {
@@ -1461,6 +1497,10 @@ fn Cg::gen_un(c : Cg, op : String, x : @sema.TExpr) -> Int {
         one,
       )
       c.store_scalar(ty, nv, a)
+      match tagged_lhs(x) {
+        Some((base, tag)) => c.store_tag(base, tag)
+        None => ()
+      }
       if pre {
         nv
       } else {

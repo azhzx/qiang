@@ -244,7 +244,18 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
         CStruct(i) | CUnion(i) =>
           match field_of(ctx.layouts[i], name) {
             Some(f) =>
-              if f.bit_width > 0 {
+              if ctx.layouts[i].tagged {
+                let lay = ctx.layouts[i]
+                let tagv = match tag_of(lay, name) {
+                  Some(v) => v
+                  None => 0L
+                }
+                mk_expr(
+                  TTaggedMember(mb, lay.payload_off + f.offset, tagv),
+                  f.ty,
+                  arrow || tb.lvalue,
+                )
+              } else if f.bit_width > 0 {
                 mk_expr(
                   TBitField(mb, f.offset, f.bit_offset, f.bit_width),
                   f.ty,
@@ -334,6 +345,49 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
         Some((lo, hi)) => mk_expr(TInt(if is_max { hi } else { lo }), ty, false)
         None => {
           ctx.diags.error("_Maxof/_Minof requires an integer type")
+          err_expr(ctx)
+        }
+      }
+    }
+    @front.ETagOf(x) => {
+      let tx = check_expr(x, ctx)
+      match decay(tx.ty) {
+        CStruct(i) | CUnion(i) =>
+          if ctx.layouts[i].tagged {
+            if tx.lvalue {
+              mk_expr(TMember(tx, 0), CInt(true), false)
+            } else {
+              ctx.diags.error("_Tag_of needs an lvalue")
+              err_expr(ctx)
+            }
+          } else {
+            ctx.diags.error("_Tag_of needs a _Tagged_union")
+            err_expr(ctx)
+          }
+        _ => {
+          ctx.diags.error("_Tag_of needs a _Tagged_union")
+          err_expr(ctx)
+        }
+      }
+    }
+    @front.EGetTag(spec, d, m) => {
+      let ty = build_type(d, declspec_to_type(spec, ctx), ctx)
+      match ty {
+        CStruct(i) | CUnion(i) =>
+          if ctx.layouts[i].tagged {
+            match tag_of(ctx.layouts[i], m) {
+              Some(v) => mk_expr(TInt(v), CInt(true), false)
+              None => {
+                ctx.diags.error("no _Tagged_union member named " + m)
+                err_expr(ctx)
+              }
+            }
+          } else {
+            ctx.diags.error("_Get_tag needs a _Tagged_union")
+            err_expr(ctx)
+          }
+        _ => {
+          ctx.diags.error("_Get_tag needs a _Tagged_union")
           err_expr(ctx)
         }
       }
@@ -486,6 +540,18 @@ fn check_binary(
     }
     mk_expr(TBin(op, tl, tr), ty, false)
   }
+}
+
+///|
+///|
+// The 0-based discriminator of a `_Tagged_union` member.
+fn tag_of(layout : Layout, name : String) -> Int64? {
+  for tv in layout.tag_vals {
+    if tv.0 == name {
+      return Some(tv.1)
+    }
+  }
+  None
 }
 
 ///|

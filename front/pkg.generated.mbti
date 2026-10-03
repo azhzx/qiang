@@ -89,6 +89,8 @@ pub(all) enum Expr {
   ECountofExpr(Expr)
   ECountofType(DeclSpec, Declarator)
   EAlignofExpr(Expr)
+  ETagOf(Expr)
+  EGetTag(DeclSpec, Declarator, String)
   ETypesCompatible(DeclSpec, Declarator, DeclSpec, Declarator)
   ECall(Expr, Array[Expr])
   EIndex(Expr, Expr)

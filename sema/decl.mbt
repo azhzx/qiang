@@ -103,6 +103,7 @@ pub fn is_const_expr(e : @front.Expr, ctx : Ctx) -> Bool {
     @front.ESizeofType(_, _) | @front.EAlignofType(_, _) => true
     @front.EMaxofType(_, _) | @front.EMinofType(_, _) => true
     @front.ECountofExpr(_) | @front.ECountofType(_, _) => true
+    @front.EGetTag(_, _, _) => true
     _ => false
   }
 }

@@ -189,6 +189,9 @@ pub(all) enum Expr {
   ECountofExpr(Expr)
   ECountofType(DeclSpec, Declarator)
   EAlignofExpr(Expr)
+  // QPCC -f_tagged_union: runtime tag and compile-time discriminator.
+  ETagOf(Expr)
+  EGetTag(DeclSpec, Declarator, String)
   ETypesCompatible(DeclSpec, Declarator, DeclSpec, Declarator)
   ECall(Expr, Array[Expr])
   EIndex(Expr, Expr)

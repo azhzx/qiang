@@ -13,6 +13,9 @@ pub(all) enum TExprKind {
   TCond(TExpr, TExpr, TExpr)
   TCast(TExpr)
   TMember(TExpr, Int)
+  // QPCC -f_tagged_union payload member: address is base + off, and a
+  // store through it also writes the discriminator `tag` at base + 0.
+  TTaggedMember(TExpr, Int, Int64)
   TBitField(TExpr, Int, Int, Int)
   TIndex(TExpr, TExpr)
   TComma(TExpr, TExpr)

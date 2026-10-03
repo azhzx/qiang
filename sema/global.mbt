@@ -346,7 +346,22 @@ fn encode_designated(
           let lay = ctx.layouts[i]
           match field_of(lay, nm) {
             Some(f) =>
-              if f.bit_width > 0 {
+              if lay.tagged {
+                match tag_of(lay, nm) {
+                  Some(tv) => put_int(bytes, off, 4, tv)
+                  None => ()
+                }
+                encode_designated(
+                  init,
+                  f.ty,
+                  off + lay.payload_off + f.offset,
+                  bytes,
+                  relocs,
+                  ctx,
+                  desigs,
+                  di + 1,
+                )
+              } else if f.bit_width > 0 {
                 match init {
                   @front.IExpr(e) =>
                     put_bits(

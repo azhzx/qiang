@@ -293,6 +293,15 @@ pub fn const_eval_int(e : @front.Expr, ctx : Ctx) -> Int64 {
         const_eval_int(f, ctx)
       }
     @front.ECast(_, _, x) => const_eval_int(x, ctx)
+    @front.EGetTag(spec, d, m) =>
+      match build_type(d, declspec_to_type(spec, ctx), ctx) {
+        CStruct(i) | CUnion(i) =>
+          match tag_of(ctx.layouts[i], m) {
+            Some(v) => v
+            None => 0L
+          }
+        _ => 0L
+      }
     @front.ECountofExpr(x) =>
       match check_expr(x, ctx).ty {
         CArray(_, n) => n.to_int64()
