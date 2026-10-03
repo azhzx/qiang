@@ -286,6 +286,30 @@ pub fn const_eval_int(e : @front.Expr, ctx : Ctx) -> Int64 {
         const_eval_int(f, ctx)
       }
     @front.ECast(_, _, x) => const_eval_int(x, ctx)
+    @front.ECountofExpr(x) =>
+      match check_expr(x, ctx).ty {
+        CArray(_, n) => n.to_int64()
+        _ => 0L
+      }
+    @front.ECountofType(spec, d) =>
+      match build_type(d, declspec_to_type(spec, ctx), ctx) {
+        CArray(_, n) => n.to_int64()
+        _ => 0L
+      }
+    @front.EMaxofType(spec, d) => {
+      let ty = build_type(d, declspec_to_type(spec, ctx), ctx)
+      match int_type_limits(ty) {
+        Some((_, hi)) => hi
+        None => 0L
+      }
+    }
+    @front.EMinofType(spec, d) => {
+      let ty = build_type(d, declspec_to_type(spec, ctx), ctx)
+      match int_type_limits(ty) {
+        Some((lo, _)) => lo
+        None => 0L
+      }
+    }
     @front.ESizeofType(spec, d) => {
       let b = declspec_to_type(spec, ctx)
       size_of_ty(build_type(d, b, ctx), ctx.layouts).to_int64()

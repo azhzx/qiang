@@ -8,6 +8,8 @@ import {
 // Values
 pub fn is_c23_keyword(String) -> Bool
 
+pub fn is_c2y_keyword(String) -> Bool
+
 pub fn is_keyword(String) -> Bool
 
 pub fn is_keyword_mode(String, StdMode) -> Bool
@@ -80,6 +82,10 @@ pub(all) enum Expr {
   ESizeofExpr(Expr)
   ESizeofType(DeclSpec, Declarator)
   EAlignofType(DeclSpec, Declarator)
+  EMaxofType(DeclSpec, Declarator)
+  EMinofType(DeclSpec, Declarator)
+  ECountofExpr(Expr)
+  ECountofType(DeclSpec, Declarator)
   EAlignofExpr(Expr)
   ETypesCompatible(DeclSpec, Declarator, DeclSpec, Declarator)
   ECall(Expr, Array[Expr])
@@ -143,6 +149,7 @@ pub struct Span {
 pub(all) enum StdMode {
   C11
   C23
+  C2y
 } derive(Eq)
 
 pub struct Stmt {

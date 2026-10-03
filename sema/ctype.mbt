@@ -134,6 +134,36 @@ pub fn decay(t : CType) -> CType {
 }
 
 ///|
+// The minimum and maximum representable values of an integer type, as Int64
+// bit patterns (an unsigned 64-bit maximum is -1L). None for types the C2y
+// _Maxof/_Minof operators reject (_Bool, non-integers, wide _BitInt).
+pub fn int_type_limits(t : CType) -> (Int64, Int64)? {
+  match t {
+    CBool => None
+    CChar(s) => if s { Some((-128L, 127L)) } else { Some((0L, 255L)) }
+    CShort(s) => if s { Some((-32768L, 32767L)) } else { Some((0L, 65535L)) }
+    CInt(s) =>
+      if s {
+        Some((-2147483648L, 2147483647L))
+      } else {
+        Some((0L, 4294967295L))
+      }
+    CLong(_) | CLongLong(_) =>
+      Some((-9223372036854775808L, 9223372036854775807L))
+    CEnum(_) => Some((-2147483648L, 2147483647L))
+    CBitInt(n) =>
+      if n <= 0 || n > 64 {
+        None
+      } else if n == 64 {
+        Some((-9223372036854775808L, 9223372036854775807L))
+      } else {
+        Some((-(1L << (n - 1)), (1L << (n - 1)) - 1L))
+      }
+    _ => None
+  }
+}
+
+///|
 pub fn size_of_ty(t : CType, layouts : Array[Layout]) -> Int {
   match t {
     CVoid => 1

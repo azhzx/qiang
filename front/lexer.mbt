@@ -137,9 +137,19 @@ pub fn is_c23_keyword(s : String) -> Bool {
 }
 
 ///|
+/// C2y-only keywords. In C11/C23 mode these are ordinary identifiers.
+pub fn is_c2y_keyword(s : String) -> Bool {
+  match s {
+    "_Countof" | "_Maxof" | "_Minof" | "_Defer" => true
+    _ => false
+  }
+}
+
+///|
 pub fn is_keyword_mode(s : String, mode : StdMode) -> Bool {
   is_keyword(s) ||
   (match mode {
+    C2y => is_c23_keyword(s) || is_c2y_keyword(s)
     C23 => is_c23_keyword(s)
     C11 => false
   })

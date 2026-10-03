@@ -3,6 +3,7 @@
 pub(all) enum StdMode {
   C11
   C23
+  C2y
 } derive(Eq)
 
 ///|

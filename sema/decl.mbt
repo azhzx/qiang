@@ -101,6 +101,8 @@ pub fn is_const_expr(e : @front.Expr, ctx : Ctx) -> Bool {
       is_const_expr(c, ctx) && is_const_expr(t, ctx) && is_const_expr(f, ctx)
     @front.ECast(_, _, x) => is_const_expr(x, ctx)
     @front.ESizeofType(_, _) | @front.EAlignofType(_, _) => true
+    @front.EMaxofType(_, _) | @front.EMinofType(_, _) => true
+    @front.ECountofExpr(_) | @front.ECountofType(_, _) => true
     _ => false
   }
 }

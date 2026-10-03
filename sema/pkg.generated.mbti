@@ -44,6 +44,8 @@ pub fn infer_auto_type(Array[@front.InitDeclarator], @front.InitDeclarator, Ctx)
 
 pub fn int_literal_type(String) -> CType
 
+pub fn int_type_limits(CType) -> (Int64, Int64)?
+
 pub fn is_arith(CType) -> Bool
 
 pub fn is_complex(CType) -> Bool

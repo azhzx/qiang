@@ -52,6 +52,8 @@ fn main {
       continue
     } else if a == "--check" {
       check_only = true
+    } else if a == "-std=c2y" {
+      mode = @front.C2y
     } else if a == "-std=c23" {
       mode = @front.C23
     } else if a == "-std=c11" {

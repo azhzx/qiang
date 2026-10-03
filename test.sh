@@ -16,16 +16,56 @@ pass=0
 fail=0
 for c in "$here"/tests/*.c; do
   base=$(basename "$c" .c)
-  # A fixture may pin the language mode with a `// std=c23` first line.
+  # A fixture may pin the language mode with a `// std=c23` or `// std=c2y`
+  # first line. C2y fixtures also see QPCC's hand-written headers and are fed
+  # through the external preprocessor, the same way the real driver expects.
+  # `// expect-exit N` makes a fixture QPCC-only (no clang reference) for
+  # keywords clang does not implement yet; its exit code must be N.
+  hdr=$(head -2 "$c")
   std=""
-  case "$(head -1 "$c")" in
+  inc=""
+  exp=""
+  case "$hdr" in
+    *"std=c2y"*)
+      std="-std=c2y"
+      inc="$here/include/qbe"
+      ;;
     *"std=c23"*) std="-std=c23" ;;
   esac
-  clang $std "$c" -o "$tmp/$base.ref"
+  case "$hdr" in
+    *"expect-exit"*)
+      exp=$(printf '%s\n' "$hdr" | sed -n 's/.*expect-exit[^0-9-]*\([-0-9]*\).*/\1/p' | head -1)
+      ;;
+  esac
   qpcc_src=$c
-  if [ "$base" = "stdlib_abs" ]; then
-    clang -E -P -nostdinc -I "$here/include/qbe" "$c" > "$tmp/$base.i"
+  if [ -n "$inc" ]; then
+    clang -E -P $std -I "$inc" "$c" > "$tmp/$base.i"
     qpcc_src=$tmp/$base.i
+  fi
+  if [ -n "$exp" ]; then
+    if ! "$exe" "$qpcc_src" $std -o "$tmp/$base.o" 2>"$tmp/$base.err"; then
+      echo "FAIL $base (qpcc compile)"
+      fail=$((fail + 1))
+      continue
+    fi
+    clang "$tmp/$base.o" -o "$tmp/$base.qpcc"
+    set +e
+    "$tmp/$base.qpcc" >/dev/null 2>&1
+    gotcode=$?
+    set -e
+    if [ "$gotcode" -ne "$exp" ]; then
+      echo "FAIL $base: qpcc exit $gotcode, want $exp"
+      fail=$((fail + 1))
+    else
+      echo "ok   $base (exit $gotcode)"
+      pass=$((pass + 1))
+    fi
+    continue
+  fi
+  if [ -n "$inc" ]; then
+    clang $std -I "$inc" "$c" -o "$tmp/$base.ref"
+  else
+    clang $std "$c" -o "$tmp/$base.ref"
   fi
   set +e
   "$tmp/$base.ref" >"$tmp/$base.ref.out" 2>&1

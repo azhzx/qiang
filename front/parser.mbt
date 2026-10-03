@@ -1365,6 +1365,32 @@ fn Parser::parse_unary_expr(self : Parser) -> Expr {
         EAlignofExpr(self.parse_unary_expr())
       }
     }
+    Keyword("_Countof") => {
+      self.pos = self.pos + 1
+      self.expect_punct("(")
+      if self.is_type_start() || self.at_typedef() {
+        let spec = self.parse_declspec()
+        let d = self.parse_declarator()
+        self.expect_punct(")")
+        ECountofType(spec, d)
+      } else {
+        let e = self.parse_unary_expr()
+        self.expect_punct(")")
+        ECountofExpr(e)
+      }
+    }
+    Keyword(k) if k == "_Maxof" || k == "_Minof" => {
+      self.pos = self.pos + 1
+      self.expect_punct("(")
+      let spec = self.parse_declspec()
+      let d = self.parse_declarator()
+      self.expect_punct(")")
+      if k == "_Maxof" {
+        EMaxofType(spec, d)
+      } else {
+        EMinofType(spec, d)
+      }
+    }
     Keyword("_Generic") => {
       self.pos = self.pos + 1
       self.expect_punct("(")

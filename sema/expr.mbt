@@ -302,6 +302,42 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
       let tx = check_expr(x, ctx)
       mk_expr(TAlignof(align_of_ty(tx.ty, ctx.layouts)), CLong(false), false)
     }
+    @front.ECountofExpr(x) => {
+      let tx = check_expr(x, ctx)
+      match tx.ty {
+        CArray(_, n) => mk_expr(TSizeof(n), CLong(false), false)
+        _ => {
+          ctx.diags.error("_Countof requires an array")
+          err_expr(ctx)
+        }
+      }
+    }
+    @front.ECountofType(spec, d) => {
+      let base = declspec_to_type(spec, ctx)
+      let ty = build_type(d, base, ctx)
+      match ty {
+        CArray(_, n) => mk_expr(TSizeof(n), CLong(false), false)
+        _ => {
+          ctx.diags.error("_Countof requires an array type")
+          err_expr(ctx)
+        }
+      }
+    }
+    @front.EMaxofType(spec, d) | @front.EMinofType(spec, d) => {
+      let base = declspec_to_type(spec, ctx)
+      let ty = build_type(d, base, ctx)
+      let is_max = match e {
+        @front.EMaxofType(_, _) => true
+        _ => false
+      }
+      match int_type_limits(ty) {
+        Some((lo, hi)) => mk_expr(TInt(if is_max { hi } else { lo }), ty, false)
+        None => {
+          ctx.diags.error("_Maxof/_Minof requires an integer type")
+          err_expr(ctx)
+        }
+      }
+    }
     @front.EGeneric(ctrl, assocs) => {
       let tc = check_expr(ctrl, ctx)
       let tct = decay(tc.ty)
