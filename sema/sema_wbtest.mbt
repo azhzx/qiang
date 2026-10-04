@@ -76,6 +76,13 @@ test "sema: C23 char8_t is an unsigned 8-bit type" {
 }
 
 ///|
+test "sema: over-aligned declarations are diagnosed" {
+  let tu = @front.parse("int main() { _Alignas(32) int x; return 0; }")
+  let r = check(tu)
+  assert_true(r.diags.length() > 0)
+}
+
+///|
 test "sema: diagnostics carry a position" {
   let tu = @front.parse("int main() {\n  int x;\n  return y;\n}")
   let r = check(tu)

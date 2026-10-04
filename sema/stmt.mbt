@@ -223,7 +223,11 @@ fn spec_align(spec : @front.DeclSpec, ty : CType, ctx : Ctx) -> Int {
       @front.AlignType(s, d) =>
         align_of_ty(build_type(d, declspec_to_type(s, ctx), ctx), ctx.layouts)
     }
-    if req > a {
+    if req > 16 {
+      ctx.diags.error(
+        "alignment greater than 16 is unsupported by the QBE stack ABI",
+      )
+    } else if req > a {
       a = req
     }
   }
