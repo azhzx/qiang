@@ -94,5 +94,28 @@ for c in "$here"/tests/*.c; do
   fi
 done
 
+# `qpcc run` drives clang for the preprocessing and the linking as well, so
+# the driver can compile and execute a normal C file in one step. Reuse a
+# fixture that already returns 0 on success.
+if "$exe" run -std=c2y "$here/tests/void_init.c" >/dev/null 2>&1; then
+  echo "ok   run (exit 0)"
+  pass=$((pass + 1))
+else
+  echo "FAIL run: qpcc run did not exit 0"
+  fail=$((fail + 1))
+fi
+
+# ... and it forwards the program's exit status.
+if "$exe" run "$here/tests/run_status.c" >/dev/null 2>&1; then
+  echo "FAIL run-status: expected a non-zero exit"
+  fail=$((fail + 1))
+elif [ $? -eq 7 ]; then
+  echo "ok   run-status (exit 7)"
+  pass=$((pass + 1))
+else
+  echo "FAIL run-status: wrong exit status"
+  fail=$((fail + 1))
+fi
+
 echo "qpcc oracle: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

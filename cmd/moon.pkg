@@ -3,6 +3,8 @@ import {
   "azhzx/qbe/qpcc/sema",
   "azhzx/qbe/util",
   "azhzx/qbe/qpcc/codegen",
+  "azhzx/qbe/native",
+  "azhzx/qbe/ir_builder",
   "moonbitlang/core/env",
   "moonbitlang/x/fs",
 }

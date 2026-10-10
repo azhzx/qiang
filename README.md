@@ -22,13 +22,26 @@ source.c --(clang -E)--> tokens --(front)--> AST
 
 ```sh
 moon build --target native qpcc/cmd
-qpcc input.c -o input.o [--emit obj|asm|qbe] [-std=c11|c23] [--check]
+
+# one step: preprocess, compile, link and run
+qpcc run hello.c [-- args...]
+
+# or drive the pieces yourself
+qpcc input.c -o input.o [--emit obj|asm|qbe] [-std=c11|c23|c2y] [--check]
 clang input.o -o a.out
 ```
 
-The C preprocessor is external: run `clang -E -P` before `qpcc` when the input
-uses `#include`/`#define`. Plain `#` lines are stripped by the driver for
-convenience.
+`qpcc run` drives clang for the parts QPCC does not own: it preprocesses with
+`clang -E -P` (so `#include`/`#define` work and the headers under
+`qpcc/include/qbe/` are found when run from the repository root; `QPCC_INCLUDE`
+overrides that), compiles with QPCC, links with clang, runs the program and
+forwards its exit status. `-I`/`-D`/`-U` go to the preprocessor and everything
+after `--` goes to the program. It needs clang on PATH and says so if it is
+missing.
+
+Without `run` the C preprocessor is external: run `clang -E -P` before `qpcc`
+when the input uses `#include`/`#define`. Plain `#` lines are stripped by the
+driver for convenience.
 
 ## Supported
 
