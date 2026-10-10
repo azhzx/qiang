@@ -340,6 +340,17 @@ fn check_local_decl(
             match idecl.init {
               Some(@front.IExpr(e)) => {
                 let te = check_expr(e, ctx)
+                // A written `_Lambda` type leaves the captured environment
+                // unknown, because the layout belongs to the expression. The
+                // initializer knows it, so take the type from there and
+                // `_Closure_environment` can see the fields.
+                match (ty, te.ty) {
+                  (CClosure(_, _, e0), CClosure(r, ps, e1)) =>
+                    if e0 == -1 && e1 != -1 {
+                      ty = CClosure(r, ps, e1)
+                    }
+                  _ => ()
+                }
                 out.push({ kind: KSDecl(n, ty, Some(te), al), })
               }
               Some(@front.IList(_)) => {
