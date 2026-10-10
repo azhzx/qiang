@@ -107,6 +107,17 @@ fn Parser::expect_ident(self : Parser) -> String {
 }
 
 ///|
+/// `(` starts a capture list when it is empty or begins with a name or `&`.
+/// A type keyword after it means those parentheses belong to the return type.
+fn Parser::at_capture_list(self : Parser) -> Bool {
+  match self.peek_n(1).kind {
+    Punct(")") | Punct("&") => true
+    Ident(_) => true
+    _ => false
+  }
+}
+
+///|
 fn is_qualifier_kw(k : String) -> Bool {
   match k {
     "const"
@@ -1696,21 +1707,24 @@ fn Parser::parse_primary_expr(self : Parser) -> Expr {
       ENullptr
     }
     Keyword("_Lambda") => {
-      // QPCC closures: _Lambda(a, &b) T (params) { body }
+      // QPCC closures: [_Lambda(a, &b)] T (params) { body }. The capture list
+      // is optional, so a closure that captures nothing reads like the type.
       self.pos = self.pos + 1
-      self.expect_punct("(")
       let caps : Array[Capture] = []
-      if !self.eat_punct(")") {
-        let mut go = true
-        while go {
-          let by_ref = self.eat_punct("&")
-          let n = self.expect_ident()
-          caps.push({ name: n, by_ref, })
-          if self.eat_punct(",") {
-            continue
+      if self.at_punct("(") && self.at_capture_list() {
+        self.pos = self.pos + 1
+        if !self.eat_punct(")") {
+          let mut go = true
+          while go {
+            let by_ref = self.eat_punct("&")
+            let n = self.expect_ident()
+            caps.push({ name: n, by_ref, })
+            if self.eat_punct(",") {
+              continue
+            }
+            self.expect_punct(")")
+            go = false
           }
-          self.expect_punct(")")
-          go = false
         }
       }
       let ret = self.parse_declspec()
