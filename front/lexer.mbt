@@ -583,7 +583,12 @@ fn Scanner::next(self : Scanner) -> Token {
         })
       mk(
         if is_inst {
-          Ident(template_mangled(s, self.read_template_args()))
+          let spelled = self.read_template_args()
+          // Identifier characters glued to the instantiation without
+          // whitespace join the name, the way the preprocessor pastes tokens:
+          // Result_([T, E])_is_ok is one identifier, Result_([T, E]) r is two.
+          let suffix = self.read_while(is_id_char)
+          Ident(template_mangled(s, spelled) + suffix)
         } else if is_keyword_mode(s, self.mode) ||
           (self.tagged_union && is_tagged_keyword(s)) {
           Keyword(s)

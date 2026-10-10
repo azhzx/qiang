@@ -151,6 +151,9 @@ MkResult(int, int)
 Result_([int, int]) r = { .ok = 1 };
 ```
 
+Identifier characters glued to an instantiation join the name, so
+`Result_([T, E])_is_ok` is one identifier and `Result_([T, E]) r` is two.
+
 Arguments are matched by spelling, not resolved, and a repeat is a no-op. See
 `qpcc/tests/template.c`.
 

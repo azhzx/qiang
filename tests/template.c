@@ -14,6 +14,10 @@ MkResult(int, float)
    second layout, or uses on either side of it would not match. */
 MkResult(int, int)
 
+static int Result_([int, int])_is_ok(Result_([int, int]) r) {
+  return r.ok != 0;
+}
+
 int main(void) {
   Result_([int, int]) a = { .ok = 100 };
   Result_([int, float]) b = { .err = 1.5f };
@@ -35,6 +39,12 @@ int main(void) {
   if (e.ok != 11) return 6;
   auto f = (Result_([int, int])){ .ok = 12 };
   if (f.ok != 12) return 7;
+
+  /* Identifier characters glued to the instantiation join the name, so one
+     instantiation can carry a family of associated declarations. */
+  if (!Result_([int, int])_is_ok(d)) return 8;
+  Result_([int, int]) zero = { .ok = 0 };
+  if (Result_([int, int])_is_ok(zero)) return 9;
 
   return 0;
 }
