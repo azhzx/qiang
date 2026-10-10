@@ -161,6 +161,16 @@ pub fn encode_global_init(
           }
         CFloat => put_int(bytes, off, 4, float_bits32(e, ctx))
         CDouble | CLongDouble => put_int(bytes, off, 8, double_bits64(e, ctx))
+        CClosure(_, _, _) =>
+          // A closure stored in a global cannot capture - there is no
+          // enclosing frame at file scope - and the front end does not yet
+          // lower such a lambda into a static { function, environment } pair.
+          // Erroring beats emitting a null function pointer, which compiles,
+          // links and segfaults on the first call.
+          ctx.diags.error(
+            "a global variable cannot be initialised with a closure; give it a " +
+            "function pointer, or build the closure inside a function",
+          )
         _ =>
           if is_integer(ty) {
             put_int(

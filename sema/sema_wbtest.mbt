@@ -34,6 +34,19 @@ test "sema: _Generic rejects compatible associations and duplicates" {
 }
 
 ///|
+test "sema: a global closure is diagnosed" {
+  // The environment is a local of the enclosing function, so there is none at
+  // file scope. Emitting a null function pointer here used to compile, link
+  // and segfault on the first call.
+  let r = check(
+    @front.parse(
+      "typedef _Lambda int (int) F; F g = _Lambda int (int x) { return x; };",
+    ),
+  )
+  assert_true(r.diags.length() > 0)
+}
+
+///|
 test "sema: typedef and struct layout" {
   let tu = @front.parse(
     "typedef int T; struct S { char a; int b; }; T g; struct S s;",

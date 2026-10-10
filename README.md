@@ -157,6 +157,12 @@ Identifier characters glued to an instantiation join the name, so
 Arguments are matched by spelling, not resolved, and a repeat is a no-op. See
 `qpcc/tests/template.c`.
 
+### Closures cannot live in globals
+
+A `_Lambda` expression's environment is a local of the enclosing function, so
+a file-scope variable cannot be initialised with a closure; that is diagnosed
+rather than turned into a null function pointer.
+
 ## Diagnostics
 
 Errors are rustc-shaped - `error: msg`, a `-->` location, the source line and
