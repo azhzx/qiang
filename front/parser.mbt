@@ -1430,7 +1430,7 @@ fn Parser::parse_cast_expr(self : Parser) -> Expr {
         let e = self.parse_cast_expr()
         return ECast(spec, d, e)
       }
-      Ident(n) if self.typedefs.contains(n) => {
+      Ident(n) if self.is_template_inst_at(1) || self.typedefs.contains(n) => {
         self.pos = self.pos + 1
         let spec = self.parse_declspec()
         let d = self.parse_declarator()
@@ -1765,6 +1765,20 @@ fn Parser::parse_primary_expr(self : Parser) -> Expr {
           n +
           "' is a QPCC extension and -std=c2y leaves it an ordinary identifier; compile with -std=cqe",
         )
+      }
+      // An instantiation followed by a braced initializer is a compound
+      // literal; the `_([` shape cannot start anything else, so the usual
+      // parentheses are optional.
+      if self.at_template_inst() {
+        let name = self.parse_template_inst()
+        if self.at_punct("{") {
+          let spec = empty_declspec()
+          spec.type_specs.push(TTypedefName(name))
+          return self.parse_postfix_tail(
+            ECompound(spec, DAbstract, self.parse_initializer()),
+          )
+        }
+        return EIdent(name)
       }
       self.pos = self.pos + 1
       EIdent(n)

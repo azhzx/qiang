@@ -29,5 +29,12 @@ int main(void) {
   Result_([int, int]) *pd = &d;
   if (pd->ok != 7) return 5;
 
+  /* A compound literal, with and without the usual parentheses: the `_([`
+     shape cannot start anything else, so the parentheses are optional. */
+  auto e = Result_([int, int]) { .ok = 11 };
+  if (e.ok != 11) return 6;
+  auto f = (Result_([int, int])){ .ok = 12 };
+  if (f.ok != 12) return 7;
+
   return 0;
 }
