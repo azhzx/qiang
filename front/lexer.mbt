@@ -440,8 +440,106 @@ fn classify_float(text : String) -> Bool {
 }
 
 ///|
+/// QPCC pseudo-templates. \`Name_([T1, T2])\` is one token whose text is the
+/// head plus a hash of the argument spelling, computed here so every parser
+/// path sees an ordinary identifier and needs no lookahead of its own. The
+/// spelling - not the type - is hashed, so the same instantiation names the
+/// same identifier in every translation unit.
+fn template_mangled(head : String, spelled : String) -> String {
+  head + hex16(fnv1a64(spelled))
+}
+
+///|
+fn fnv1a64(s : String) -> UInt64 {
+  let mut h : UInt64 = 0xCBF29CE484222325UL
+  for b in s.to_bytes() {
+    h = (h ^ (b.to_int().to_uint64() & 0xFFUL)) * 0x100000001B3UL
+  }
+  h
+}
+
+///|
+fn hex16(v : UInt64) -> String {
+  let digits = "0123456789abcdef"
+  let mut out = ""
+  let mut i = 15
+  while i >= 0 {
+    let nib = ((v >> (i * 4)) & 0xFUL).to_int()
+    out = out + digits[nib:nib + 1].to_string()
+    i = i - 1
+  }
+  out
+}
+
+///|
 fn mk(kind : TokenKind, line : Int, col : Int, len? : Int = 0) -> Token {
   { kind, line, col, len, }
+}
+
+///|
+/// The shape \`template_mangled\` produces: a head ending in \`_\` followed by
+/// sixteen lowercase hex digits.
+pub fn is_template_name(s : String) -> Bool {
+  let n = s.length()
+  if n < 17 || s[n - 17:n - 16].to_string() != "_" {
+    return false
+  }
+  for i in (n - 16)..<n {
+    let c = s[i:i + 1].to_string()
+    if !((c >= "0" && c <= "9") || (c >= "a" && c <= "f")) {
+      return false
+    }
+  }
+  true
+}
+
+///|
+fn is_space_char(c : Char) -> Bool {
+  c == ' ' || c == '\t' || c == '\n' || c == '\r'
+}
+
+///|
+/// After a template head, consume \`([ ... ])\` and return the argument
+/// spelling with whitespace removed, so \`[int,float]\` and \`[int, float]\` name
+/// the same instantiation.
+fn Scanner::read_template_args(self : Scanner) -> String {
+  self.bump(2)
+  let mut depth = 0
+  let mut spelled = ""
+  let mut go = true
+  while go {
+    match self.src {
+      [] => abort("qpcc/front: unterminated template argument list")
+      ['[', ..] => {
+        depth = depth + 1
+        spelled = spelled + "["
+        self.bump(1)
+      }
+      [']', ..] =>
+        if depth == 0 {
+          self.bump(1)
+          match self.src {
+            [')', ..] => {
+              self.bump(1)
+              go = false
+            }
+            _ =>
+              abort("qpcc/front: expected ')' after a template argument list")
+          }
+        } else {
+          depth = depth - 1
+          spelled = spelled + "]"
+          self.bump(1)
+        }
+      [c, ..] => {
+        if !is_space_char(c) {
+          spelled = spelled + c.to_string()
+        }
+        self.bump(1)
+      }
+    }
+  }
+  spelled
 }
 
 ///|
@@ -477,8 +575,16 @@ fn Scanner::next(self : Scanner) -> Token {
     }
     [c, ..] if is_id_start(c) => {
       let s = self.read_while(is_id_char)
+      // A head ending in '_' followed by '([' is an instantiation.
+      let is_inst = s.has_suffix("_") &&
+        (match self.src {
+          ['(', '[', ..] => true
+          _ => false
+        })
       mk(
-        if is_keyword_mode(s, self.mode) ||
+        if is_inst {
+          Ident(template_mangled(s, self.read_template_args()))
+        } else if is_keyword_mode(s, self.mode) ||
           (self.tagged_union && is_tagged_keyword(s)) {
           Keyword(s)
         } else {

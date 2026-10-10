@@ -18,6 +18,8 @@ pub fn is_qpcc_keyword(String) -> Bool
 
 pub fn is_tagged_keyword(String) -> Bool
 
+pub fn is_template_name(String) -> Bool
+
 pub fn parse(String, mode? : StdMode, tagged_union? : Bool, display? : String) -> TranslationUnit
 
 pub fn render_diag(String, String, String, String, Int, Int, Int) -> String

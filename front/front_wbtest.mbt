@@ -31,6 +31,33 @@ test "front: parse GNU extensions" {
 }
 
 ///|
+test "front: mangled name shape" {
+  let n = template_mangled("R_", "int,float")
+  assert_eq(n.length(), 18)
+  assert_true(is_template_name(n))
+}
+
+///|
+test "front: a template instantiation lexes as one identifier" {
+  let toks = tokenize("R_([int, float]) x;", C11)
+  assert_true(
+    match toks[0].kind {
+      Ident(n) => is_template_name(n)
+      _ => false
+    },
+  )
+  // The same spelling with different whitespace mangles the same.
+  let a = tokenize("R_([int,float]) x;", C11)
+  let b = tokenize("R_([int, float]) x;", C11)
+  assert_true(
+    match (a[0].kind, b[0].kind) {
+      (Ident(x), Ident(y)) => x == y
+      _ => false
+    },
+  )
+}
+
+///|
 test "front: parse _Generic, _Static_assert, typeof, attributes" {
   let _tu = parse(
     "_Static_assert(sizeof(int) == 4, \"int\"); int f() { typeof(int) x = 0; return _Generic(x, int: 1, default: 0); } typedef int *p __attribute__((unused));",
