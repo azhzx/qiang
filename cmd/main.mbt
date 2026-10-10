@@ -63,7 +63,7 @@ fn front_end(
     }
   }
   let tu = @front.parse(strip_directives(src), mode~, tagged_union~)
-  let prog = @sema.check(tu)
+  let prog = @sema.check(tu, mode~)
   let mut errs = 0
   for d in prog.diags {
     match d.sev {
@@ -173,6 +173,9 @@ fn run_subcommand(args : Array[String]) -> Unit {
       } else if a == "-std=c11" {
         mode = @front.C11
         std_flag = a
+      } else if a == "-std=cqe" {
+        mode = @front.Cqe
+        std_flag = a
       } else if a == "-f_tagged_union" {
         tagged_union = true
       } else if a == "-I" || a == "-D" || a == "-U" {
@@ -186,7 +189,8 @@ fn run_subcommand(args : Array[String]) -> Unit {
       } else if a.has_prefix("-I") || a.has_prefix("-D") || a.has_prefix("-U") {
         clang_flags.push(a)
       } else if a.has_prefix("-") {
-        abort("qpcc run: unknown option " + a)
+        println("qpcc run: unknown option " + a)
+        @native.mbt_native_exit(1)
       } else {
         input = a
       }
@@ -203,9 +207,12 @@ fn run_subcommand(args : Array[String]) -> Unit {
   let i_path = @native.tmp_path(".i")
   let o_path = @native.tmp_path(".o")
   let exe_path = @native.tmp_path("")
+  // clang has no -std=cqe, so the preprocessing step uses the C2y spelling;
+  // only QPCC needs to know that the QPCC extensions are on.
+  let clang_std = if std_flag == "-std=cqe" { "-std=c2y" } else { std_flag }
   let mut pp = "clang -E -P "
-  if std_flag != "" {
-    pp = pp + std_flag + " "
+  if clang_std != "" {
+    pp = pp + clang_std + " "
   }
   for f in clang_flags {
     pp = pp + shell_quote(f) + " "
@@ -301,6 +308,8 @@ fn main {
       mode = @front.C23
     } else if a == "-std=c11" {
       mode = @front.C11
+    } else if a == "-std=cqe" {
+      mode = @front.Cqe
     } else if a.has_prefix("-std=") {
 
     } else if input == "" {

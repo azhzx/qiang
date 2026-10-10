@@ -1,5 +1,5 @@
 // expect-exit 0
-// std=c2y
+// std=cqe
 // <function_pointer.h>: the _Function_pointer prefix form for a typed function
 // pointer, and the bare form for the any-function-pointer storage type.
 #include <function_pointer.h>

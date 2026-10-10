@@ -25,12 +25,24 @@ for c in "$here"/tests/*.c; do
   std=""
   inc=""
   exp=""
+  # clang has no -std=cqe (it only knows c2y), so the preprocessing step and
+  # the reference build use cstd while QPCC gets std.
+  cstd=""
   case "$hdr" in
-    *"std=c2y"*)
-      std="-std=c2y"
+    *"std=cqe"*)
+      std="-std=cqe"
+      cstd="-std=c2y"
       inc="$here/include/qbe"
       ;;
-    *"std=c23"*) std="-std=c23" ;;
+    *"std=c2y"*)
+      std="-std=c2y"
+      cstd="-std=c2y"
+      inc="$here/include/qbe"
+      ;;
+    *"std=c23"*)
+      std="-std=c23"
+      cstd="-std=c23"
+      ;;
   esac
   case "$hdr" in
     *"expect-exit"*)
@@ -43,7 +55,7 @@ for c in "$here"/tests/*.c; do
   esac
   qpcc_src=$c
   if [ -n "$inc" ]; then
-    clang -E -P $std -I "$inc" "$c" > "$tmp/$base.i"
+    clang -E -P $cstd -I "$inc" "$c" > "$tmp/$base.i"
     qpcc_src=$tmp/$base.i
   fi
   if [ -n "$exp" ]; then
@@ -67,9 +79,9 @@ for c in "$here"/tests/*.c; do
     continue
   fi
   if [ -n "$inc" ]; then
-    clang $std -I "$inc" "$c" -o "$tmp/$base.ref"
+    clang $cstd -I "$inc" "$c" -o "$tmp/$base.ref"
   else
-    clang $std "$c" -o "$tmp/$base.ref"
+    clang $cstd "$c" -o "$tmp/$base.ref"
   fi
   set +e
   "$tmp/$base.ref" >"$tmp/$base.ref.out" 2>&1
@@ -97,7 +109,7 @@ done
 # `qpcc run` drives clang for the preprocessing and the linking as well, so
 # the driver can compile and execute a normal C file in one step. Reuse a
 # fixture that already returns 0 on success.
-if "$exe" run -std=c2y "$here/tests/void_init.c" >/dev/null 2>&1; then
+if "$exe" run -std=cqe "$here/tests/void_init.c" >/dev/null 2>&1; then
   echo "ok   run (exit 0)"
   pass=$((pass + 1))
 else

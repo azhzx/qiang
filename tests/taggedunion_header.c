@@ -1,5 +1,5 @@
 // expect-exit 0
-// std=c2y tagged
+// std=cqe
 // <taggedunion.h>: the friendly spellings tagunion / static_tag / dynamic_tag
 // over -f_tagged_union.
 #include <taggedunion.h>

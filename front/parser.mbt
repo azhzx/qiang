@@ -12,6 +12,12 @@ priv struct Parser {
 }
 
 ///|
+/// C23 features are available in every mode above C11.
+fn Parser::at_least_c23(self : Parser) -> Bool {
+  self.mode != C11
+}
+
+///|
 fn Parser::peek(self : Parser) -> Token {
   self.toks[self.pos]
 }
@@ -263,7 +269,7 @@ fn Parser::skip_balanced(
 
 ///|
 fn Parser::at_c23_attr(self : Parser) -> Bool {
-  self.mode == C23 && self.at_punct("[") && self.peek_n(1).kind is Punct("[")
+  self.at_least_c23() && self.at_punct("[") && self.peek_n(1).kind is Punct("[")
 }
 
 ///|
@@ -613,7 +619,7 @@ fn Parser::parse_declspec(self : Parser) -> DeclSpec {
           go = false
         }
       Punct("[") =>
-        if self.mode == C23 && self.peek_n(1).kind is Punct("[") {
+        if self.at_least_c23() && self.peek_n(1).kind is Punct("[") {
           let a = self.parse_c23_attrs()
           for x in a {
             attrs.push(x)
@@ -634,7 +640,7 @@ fn Parser::parse_declspec(self : Parser) -> DeclSpec {
   // C23 `auto` with no type specifier infers the type from the initializer.
   // Mark it with the same internal specifier that `__auto_type` produces so
   // the semantic analyser handles both through one path.
-  if (self.mode == C23 || self.mode == C2y) && type_specs.length() == 0 {
+  if self.at_least_c23() && type_specs.length() == 0 {
     let mut is_auto = false
     for s in storage {
       if s == "auto" {
@@ -1624,6 +1630,13 @@ fn Parser::parse_primary_expr(self : Parser) -> Expr {
       EString(parts)
     }
     Ident(n) => {
+      if self.mode == C2y && is_qpcc_keyword(n) {
+        self.fail(
+          "'" +
+          n +
+          "' is a QPCC extension and -std=c2y leaves it an ordinary identifier; compile with -std=cqe",
+        )
+      }
       self.pos = self.pos + 1
       EIdent(n)
     }
@@ -1707,7 +1720,10 @@ pub fn parse(
   mode? : StdMode = C11,
   tagged_union? : Bool = false,
 ) -> TranslationUnit {
-  let toks = tokenize(src, mode, tagged_union~)
+  // -std=cqe is C2y plus the QPCC extensions, so the tagged union is part of
+  // the mode; -f_tagged_union still enables it on its own in the other modes.
+  let tagged = tagged_union || mode == Cqe
+  let toks = tokenize(src, mode, tagged_union=tagged)
   let typedefs : Map[String, Bool] = Map::new()
   for
     n in [
@@ -1715,7 +1731,7 @@ pub fn parse(
     ] {
     typedefs.set(n, true)
   }
-  let p = Parser::{ toks, pos: 0, typedefs, mode, tagged_union, }
+  let p = Parser::{ toks, pos: 0, typedefs, mode, tagged_union: tagged, }
   let decls : Array[ExternalDecl] = []
   while !(p.peek().kind is Eof) {
     decls.push(p.parse_external_decl())

@@ -1,5 +1,5 @@
 // expect-exit 0
-// std=c2y
+// std=cqe
 // QPCC closures: _Lambda / the _Lambda T (params) type / _Closure_environment.
 // The environment is a local of the enclosing function, so an escaping
 // closure is undefined behaviour, as documented.

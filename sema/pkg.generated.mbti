@@ -12,7 +12,7 @@ pub fn align_up(Int, Int) -> Int
 
 pub fn build_type(@front.Declarator, CType, Ctx) -> CType
 
-pub fn check(@front.TranslationUnit) -> CheckedProgram
+pub fn check(@front.TranslationUnit, mode? : @front.StdMode) -> CheckedProgram
 
 pub fn check_block_items(Array[@front.BlockItem], Ctx) -> Array[TStmt]
 
@@ -141,6 +141,7 @@ pub struct ClosureInfo {
 
 pub struct Ctx {
   scopes : ScopeStack
+  mode : @front.StdMode
   layouts : Array[Layout]
   diags : Diags
   mut ret_ty : CType?

@@ -263,11 +263,12 @@ fn check_local_decl(
             storage: StTypedef,
             value: 0L,
           })
-        } else if ty is CVoid {
-          // QPCC: `void x = f();` declares no object. The initializer is
-          // evaluated for its side effects and its value discarded, exactly as
-          // if the expression had been written as a statement of its own.
-          // `void x;` has nothing to evaluate and stays an error.
+        } else if ty is CVoid && ctx.mode == @front.Cqe {
+          // QPCC extension: `void x = f();` declares no object. The
+          // initializer is evaluated for its side effects and its value
+          // discarded, exactly as if the expression had been written as a
+          // statement of its own. `void x;` has nothing to evaluate and stays
+          // an error.
           match idecl.init {
             Some(@front.IExpr(e)) => {
               let te = check_expr(e, ctx)
@@ -276,6 +277,14 @@ fn check_local_decl(
             _ =>
               ctx.diags.error("variable '" + n + "' has incomplete type 'void'")
           }
+        } else if ty is CVoid {
+          // Plain C has no object of type void; the declaration form above is
+          // the QPCC extension and needs -std=cqe.
+          ctx.diags.error(
+            "variable '" +
+            n +
+            "' has incomplete type 'void' (a void declaration needs -std=cqe)",
+          )
         } else {
           let storage = storage_of(spec)
           let lbl_init = match idecl.init {

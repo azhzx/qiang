@@ -2,6 +2,9 @@
 /// Sema context: scopes, layouts and diagnostics.
 pub struct Ctx {
   scopes : ScopeStack
+  // The language mode. Only the QPCC-only relaxations consult it: the lexer
+  // has already decided which words are keywords.
+  mode : @front.StdMode
   layouts : Array[Layout]
   diags : Diags
   mut ret_ty : CType?
@@ -547,9 +550,13 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
 
 ///|
 /// Check a translation unit: build types, layouts and symbols.
-pub fn check(tu : @front.TranslationUnit) -> CheckedProgram {
+pub fn check(
+  tu : @front.TranslationUnit,
+  mode? : @front.StdMode = @front.Cqe,
+) -> CheckedProgram {
   let ctx = Ctx::{
     scopes: ScopeStack::new(),
+    mode,
     layouts: [],
     diags: Diags::new(),
     ret_ty: None,

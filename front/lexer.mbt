@@ -137,16 +137,21 @@ pub fn is_c23_keyword(s : String) -> Bool {
 }
 
 ///|
-/// C2y-only keywords. In C11/C23 mode these are ordinary identifiers.
+/// C2y-only keywords, i.e. the ones with a WG14 proposal behind them. In
+/// C11/C23 mode these are ordinary identifiers.
 pub fn is_c2y_keyword(s : String) -> Bool {
   match s {
-    "_Countof"
-    | "_Maxof"
-    | "_Minof"
-    | "_Defer"
-    | "_Function_pointer"
-    | "_Lambda"
-    | "_Closure_environment" => true
+    "_Countof" | "_Maxof" | "_Minof" | "_Defer" => true
+    _ => false
+  }
+}
+
+///|
+/// QPCC-only keywords. They need -std=cqe; in every other mode they are
+/// ordinary identifiers, so no standard mode is affected by them.
+pub fn is_qpcc_keyword(s : String) -> Bool {
+  match s {
+    "_Function_pointer" | "_Lambda" | "_Closure_environment" => true
     _ => false
   }
 }
@@ -167,6 +172,7 @@ pub fn is_tagged_keyword(s : String) -> Bool {
 pub fn is_keyword_mode(s : String, mode : StdMode) -> Bool {
   is_keyword(s) ||
   (match mode {
+    Cqe => is_c23_keyword(s) || is_c2y_keyword(s) || is_qpcc_keyword(s)
     C2y => is_c23_keyword(s) || is_c2y_keyword(s)
     C23 => is_c23_keyword(s)
     C11 => false

@@ -4,6 +4,10 @@ pub(all) enum StdMode {
   C11
   C23
   C2y
+  // C2y plus the QPCC extensions (closures, the _Function_pointer prefix form,
+  // the tagged union, `void x = expr;`). Non-standard by design, so it gets its
+  // own mode instead of being folded into -std=c2y.
+  Cqe
 } derive(Eq)
 
 ///|

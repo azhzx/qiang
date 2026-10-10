@@ -14,6 +14,8 @@ pub fn is_keyword(String) -> Bool
 
 pub fn is_keyword_mode(String, StdMode) -> Bool
 
+pub fn is_qpcc_keyword(String) -> Bool
+
 pub fn is_tagged_keyword(String) -> Bool
 
 pub fn parse(String, mode? : StdMode, tagged_union? : Bool) -> TranslationUnit
@@ -161,6 +163,7 @@ pub(all) enum StdMode {
   C11
   C23
   C2y
+  Cqe
 } derive(Eq)
 
 pub struct Stmt {

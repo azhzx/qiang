@@ -1,5 +1,5 @@
 // expect-exit 0
-// std=c2y
+// std=cqe
 // QPCC: `void x = f();` evaluates the call and declares nothing, so the
 // variable never reaches the local table.
 static int calls = 0;

@@ -118,10 +118,7 @@ Supported:
   its enclosing block is left, in reverse order, on any exit (falling off
   the end, `return`, `break`, `continue`, `goto` out). A jump that would
   leave the `_Defer` statement itself, and a `goto` into it, are diagnosed.
-- `_Function_pointer`, the prefix spelling of a function pointer type, and
-  the bare form as the storage type for any function pointer (N3914).
-- `_Lambda` closures, with by-value and by-reference captures, and
-  `_Closure_environment` for the captured environment.
+The QPCC-only keywords are not part of this mode: see `-std=cqe` below.
 
 The friendly spellings live in hand-written headers under
 `qpcc/include/qbe/`:
@@ -141,6 +138,22 @@ them; they are a QPCC convenience.
 Pass `-I <qpcc>/qpcc/include/qbe` to the external preprocessor, as
 `qpcc/test.sh` does for `std=c2y` fixtures. QPCC itself only recognizes the
 underscore keywords.
+
+## CQE status
+
+`-std=cqe` is **C2y plus the QPCC extensions**, so `-std=c2y` stays exactly
+C2y:
+
+- `_Function_pointer`, the prefix spelling of a function pointer type, and the
+  bare form as the storage type for any function pointer (N3914).
+- `_Lambda` closures, with by-value and by-reference captures, and
+  `_Closure_environment` for the captured environment.
+- `_Tagged_union` / `_Static_tag` / `_Dynamic_tag` (also available on their
+  own through `-f_tagged_union` in any mode).
+- `void x = expr;`, which declares no object.
+
+Using a QPCC keyword under `-std=c2y` is diagnosed with a pointer at
+`-std=cqe`.
 
 ## _Tagged_union status
 
