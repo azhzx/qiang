@@ -62,32 +62,39 @@ fn front_end(
       return None
     }
   }
-  let tu = @front.parse(strip_directives(src), mode~, tagged_union~)
+  // Line numbers refer to what the parser saw, so the snippet must come from
+  // the same text.
+  let shown = strip_directives(src)
+  let tu = @front.parse(shown, mode~, tagged_union~, display~)
   let prog = @sema.check(tu, mode~)
   let mut errs = 0
   for d in prog.diags {
     match d.sev {
       @sema.SevError => {
         println(
-          display +
-          ":" +
-          d.line.to_string() +
-          ":" +
-          d.col.to_string() +
-          ": error: " +
-          d.msg,
+          @front.render_diag(
+            display,
+            shown,
+            "error",
+            d.msg,
+            d.line,
+            d.col,
+            d.len,
+          ),
         )
         errs = errs + 1
       }
       @sema.SevWarning =>
         println(
-          display +
-          ":" +
-          d.line.to_string() +
-          ":" +
-          d.col.to_string() +
-          ": warning: " +
-          d.msg,
+          @front.render_diag(
+            display,
+            shown,
+            "warning",
+            d.msg,
+            d.line,
+            d.col,
+            d.len,
+          ),
         )
     }
   }
@@ -133,6 +140,17 @@ fn qpcc_include_dir() -> String? {
     }
   }
   None
+}
+
+///|
+/// N3914's predefined macros. The target platforms have a unified address
+/// space, so every conversion is supported and each macro is the integer
+/// literal 1. They belong to C2y and to -std=cqe.
+fn ptr_conv_macros() -> String {
+  "-D__STDC_PTR_CONV_ANY_FUNC_TO_VOID__=1 " +
+  "-D__STDC_PTR_CONV_VOID_TO_ANY_FUNC__=1 " +
+  "-D__STDC_PTR_CONV_FUNC_TO_VOID__=1 " +
+  "-D__STDC_PTR_CONV_VOID_TO_FUNC__=1 "
 }
 
 ///|
@@ -213,6 +231,11 @@ fn run_subcommand(args : Array[String]) -> Unit {
   let mut pp = "clang -E -P "
   if clang_std != "" {
     pp = pp + clang_std + " "
+  }
+  // N3914's convertibility macros. They are QPCC's, and clang has no idea
+  // about them, so the driver has to define them for the preprocessing step.
+  if mode == @front.C2y || mode == @front.Cqe {
+    pp = pp + ptr_conv_macros()
   }
   for f in clang_flags {
     pp = pp + shell_quote(f) + " "

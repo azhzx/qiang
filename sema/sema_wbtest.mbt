@@ -6,6 +6,34 @@ test "sema: basic declarations" {
 }
 
 ///|
+test "sema: _Generic rejects compatible associations and duplicates" {
+  // C11 6.5.1.1p2: no two associations may specify compatible types, and a
+  // generic selection has at most one default.
+  let a = check(
+    @front.parse("int f(int x) { return _Generic(x, int: 1, int: 2); }"),
+  )
+  assert_true(a.diags.length() > 0)
+  let b = check(
+    @front.parse(
+      "int f(int x) { return _Generic(x, int: 1, default: 2, default: 3); }",
+    ),
+  )
+  assert_true(b.diags.length() > 0)
+  // A compatible-but-distinct pair (int vs signed int) is the same type.
+  let c = check(
+    @front.parse("int f(int x) { return _Generic(x, int: 1, signed: 2); }"),
+  )
+  assert_true(c.diags.length() > 0)
+  // ... and a well-formed selection is still accepted.
+  let d = check(
+    @front.parse(
+      "int f(int x) { return _Generic(x, int: 1, double: 2, default: 3); }",
+    ),
+  )
+  assert_eq(d.diags.length(), 0)
+}
+
+///|
 test "sema: typedef and struct layout" {
   let tu = @front.parse(
     "typedef int T; struct S { char a; int b; }; T g; struct S s;",

@@ -440,8 +440,8 @@ fn classify_float(text : String) -> Bool {
 }
 
 ///|
-fn mk(kind : TokenKind, line : Int, col : Int) -> Token {
-  { kind, line, col, }
+fn mk(kind : TokenKind, line : Int, col : Int, len? : Int = 0) -> Token {
+  { kind, line, col, len, }
 }
 
 ///|
@@ -532,8 +532,11 @@ pub fn tokenize(
   let out : Array[Token] = []
   let mut go = true
   while go {
+    // The scanner consumes from src, so the length is what it ate.
+    let before = sc.src.length()
     let t = sc.next()
-    out.push(t)
+    let len = before - sc.src.length()
+    out.push(Token::{ kind: t.kind, line: t.line, col: t.col, len, })
     match t.kind {
       Eof => go = false
       _ => ()

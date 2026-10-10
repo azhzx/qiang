@@ -7,6 +7,8 @@
 pub struct Span {
   line : Int
   col : Int
+  // Length in bytes of the construct, for the caret run in a diagnostic.
+  len : Int
 }
 
 ///|
@@ -140,7 +142,7 @@ pub struct ExternalDecl {
 ///|
 pub(all) enum BlockItem {
   BStmt(Stmt)
-  BDecl(DeclSpec, Array[InitDeclarator])
+  BDecl(DeclSpec, Array[InitDeclarator], Span)
 }
 
 ///|

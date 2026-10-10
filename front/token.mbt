@@ -29,6 +29,8 @@ pub struct Token {
   kind : TokenKind
   line : Int
   col : Int
+  // Length in bytes of the token text, for the caret run in a diagnostic.
+  len : Int
 }
 
 ///|

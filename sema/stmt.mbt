@@ -547,7 +547,14 @@ pub fn check_block_items(
   for it in items {
     match it {
       @front.BStmt(s) => out.push(check_stmt(s, ctx))
-      @front.BDecl(spec, decls) => check_local_decl(spec, decls, ctx, out)
+      @front.BDecl(spec, decls, pos) => {
+        // Local declarations carry their own position; without it a diagnostic
+        // raised while checking the initializer lands on the enclosing block.
+        ctx.diags.cur_line = pos.line
+        ctx.diags.cur_col = pos.col
+        ctx.diags.cur_len = pos.len
+        check_local_decl(spec, decls, ctx, out)
+      }
     }
   }
   out
@@ -557,7 +564,10 @@ pub fn check_block_items(
 fn check_block_item(it : @front.BlockItem, ctx : Ctx) -> TStmt {
   match it {
     @front.BStmt(s) => check_stmt(s, ctx)
-    @front.BDecl(spec, decls) => {
+    @front.BDecl(spec, decls, pos) => {
+      ctx.diags.cur_line = pos.line
+      ctx.diags.cur_col = pos.col
+      ctx.diags.cur_len = pos.len
       let arr : Array[TStmt] = []
       check_local_decl(spec, decls, ctx, arr)
       { kind: KSBlock(arr), }
@@ -741,6 +751,7 @@ fn check_return(e : @front.Expr?, ctx : Ctx) -> TStmt {
 pub fn check_stmt(s : @front.Stmt, ctx : Ctx) -> TStmt {
   ctx.diags.cur_line = s.pos.line
   ctx.diags.cur_col = s.pos.col
+  ctx.diags.cur_len = s.pos.len
   match s.kind {
     @front.SCompound(items) => {
       ctx.scopes.push()

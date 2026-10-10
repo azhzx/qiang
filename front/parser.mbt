@@ -4,9 +4,16 @@
 
 ///|
 priv struct Parser {
+  // Kept for diagnostics: `fail` renders the offending line.
+  src : String
+  display : String
   toks : Array[Token]
   mut pos : Int
   typedefs : Map[String, Bool]
+  // QPCC pseudo-templates: names produced by an instantiation, and the subset
+  // already defined by a declaration.
+  template_names : Map[String, Bool]
+  template_defs : Map[String, Bool]
   mode : StdMode
   tagged_union : Bool
 }
@@ -35,7 +42,7 @@ fn Parser::peek_n(self : Parser, n : Int) -> Token {
 ///|
 fn[T] Parser::fail(self : Parser, msg : String) -> T {
   let t = self.peek()
-  abort("qpcc/front: " + msg + " at line " + t.line.to_string())
+  abort(render_diag(self.display, self.src, "error", msg, t.line, t.col, t.len))
 }
 
 ///|
@@ -152,7 +159,7 @@ fn is_basic_type_kw(k : String) -> Bool {
 ///|
 fn Parser::at_typedef(self : Parser) -> Bool {
   match self.peek().kind {
-    Ident(n) => self.typedefs.contains(n)
+    Ident(n) => self.is_template_inst_at(0) || self.typedefs.contains(n)
     _ => false
   }
 }
@@ -197,7 +204,18 @@ fn Parser::is_type_start_at(self : Parser, off : Int) -> Bool {
       k == "static" ||
       k == "auto" ||
       k == "register"
-    Ident(n) => self.typedefs.contains(n)
+    Ident(n) => self.is_template_inst_at(off) || self.typedefs.contains(n)
+    _ => false
+  }
+}
+
+///|
+fn Parser::is_template_inst_at(self : Parser, off : Int) -> Bool {
+  match self.peek_n(off).kind {
+    Ident(n) =>
+      n.has_suffix("_") &&
+      self.peek_n(off + 1).kind is Punct("(") &&
+      self.peek_n(off + 2).kind is Punct("[")
     _ => false
   }
 }
@@ -628,7 +646,9 @@ fn Parser::parse_declspec(self : Parser) -> DeclSpec {
           go = false
         }
       Ident(n) =>
-        if self.typedefs.contains(n) && type_specs.length() == 0 {
+        if self.at_template_inst() && type_specs.length() == 0 {
+          type_specs.push(TTypedefName(self.parse_template_inst()))
+        } else if self.typedefs.contains(n) && type_specs.length() == 0 {
           type_specs.push(TTypedefName(n))
           self.pos = self.pos + 1
         } else {
@@ -710,6 +730,8 @@ fn Parser::parse_direct_declarator(self : Parser) -> Declarator {
     let inner = self.parse_declarator()
     self.expect_punct(")")
     inner
+  } else if self.at_template_inst() {
+    DName(self.parse_template_inst())
   } else {
     match self.eat_ident() {
       Some(n) => DName(n)
@@ -852,9 +874,88 @@ fn decl_name(d : Declarator) -> String? {
 }
 
 ///|
+/// QPCC pseudo-templates. `Name_([T1, T2])` is an ordinary identifier whose
+/// spelling is the head plus a hash of the arguments, so the same
+/// instantiation spells the same name in every translation unit and there is
+/// no per-TU state to keep in sync.
+fn template_mangled(head : String, spelled : String) -> String {
+  head + hex16(fnv1a64(spelled))
+}
+
+///|
+fn fnv1a64(s : String) -> UInt64 {
+  let mut h : UInt64 = 0xCBF29CE484222325UL
+  for b in s.to_bytes() {
+    h = (h ^ (b.to_int().to_uint64() & 0xFFUL)) * 0x100000001B3UL
+  }
+  h
+}
+
+///|
+fn hex16(v : UInt64) -> String {
+  let digits = "0123456789abcdef"
+  let mut out = ""
+  let mut i = 15
+  while i >= 0 {
+    let nib = ((v >> (i * 4)) & 0xFUL).to_int()
+    out = out + digits[nib:nib + 1].to_string()
+    i = i - 1
+  }
+  out
+}
+
+///|
+fn Parser::at_template_inst(self : Parser) -> Bool {
+  self.is_template_inst_at(0)
+}
+
+///|
+/// Consume `Name_([T1, T2])` and return the mangled identifier. The arguments
+/// are matched by spelling, not resolved, so a misspelled type still mangles
+/// into a name - that is what makes the feature "pseudo".
+fn Parser::parse_template_inst(self : Parser) -> String {
+  let head = match self.peek().kind {
+    Ident(n) => n
+    _ => self.fail("expected a template name")
+  }
+  self.pos = self.pos + 1
+  self.expect_punct("(")
+  self.expect_punct("[")
+  let start = self.pos
+  let mut depth = 0
+  let mut go = true
+  while go {
+    match self.peek().kind {
+      Punct("]") =>
+        if depth == 0 {
+          go = false
+        } else {
+          depth = depth - 1
+          self.pos = self.pos + 1
+        }
+      Punct("[") => {
+        depth = depth + 1
+        self.pos = self.pos + 1
+      }
+      Eof => self.fail("unterminated template argument list")
+      _ => self.pos = self.pos + 1
+    }
+  }
+  let mut spelled = ""
+  for k in start..<self.pos {
+    spelled = spelled + self.toks[k].text()
+  }
+  self.expect_punct("]")
+  self.expect_punct(")")
+  let name = template_mangled(head, spelled)
+  self.template_names.set(name, true)
+  name
+}
+
+///|
 fn Parser::parse_external_decl(self : Parser) -> ExternalDecl {
   let tok = self.peek()
-  let pos = Span::{ line: tok.line, col: tok.col, }
+  let pos = Span::{ line: tok.line, col: tok.col, len: tok.len, }
   { kind: self.parse_external_decl_kind(), pos, }
 }
 
@@ -903,6 +1004,32 @@ fn Parser::parse_external_decl_kind(self : Parser) -> ExternalDeclKind {
   }
   self.expect_punct(";")
   self.declare_typedefs(spec, decls)
+  // A second instantiation with the same arguments would define the same
+  // typedef again and resolve the aggregate body into a second layout, so uses
+  // before it would stop matching uses after it. The definition is identical,
+  // so drop the repeat.
+  let mut all_seen = decls.length() > 0
+  for d in decls {
+    let n = match decl_name(d.decl) {
+      Some(n) => n
+      None => ""
+    }
+    if !(self.template_names.contains(n) && self.template_defs.contains(n)) {
+      all_seen = false
+    }
+  }
+  if all_seen {
+    return EEmpty
+  }
+  for d in decls {
+    match decl_name(d.decl) {
+      Some(n) =>
+        if self.template_names.contains(n) {
+          self.template_defs.set(n, true)
+        }
+      None => ()
+    }
+  }
   EDecl(spec, decls)
 }
 
@@ -949,7 +1076,7 @@ fn is_function_declarator(d : Declarator) -> Bool {
 ///|
 fn Parser::parse_compound_stmt(self : Parser) -> Stmt {
   let tok = self.peek()
-  let pos = Span::{ line: tok.line, col: tok.col, }
+  let pos = Span::{ line: tok.line, col: tok.col, len: tok.len, }
   { kind: self.parse_compound(), pos, }
 }
 
@@ -966,9 +1093,11 @@ fn Parser::parse_compound(self : Parser) -> StmtKind {
     }
     if self.at_decl_start() &&
       !(self.peek().kind is Ident(_) && self.peek_n(1).kind is Punct(":")) {
+      let dtok = self.peek()
+      let dpos = Span::{ line: dtok.line, col: dtok.col, len: dtok.len, }
       let spec = self.parse_declspec()
       if self.eat_punct(";") {
-        items.push(BDecl(spec, []))
+        items.push(BDecl(spec, [], dpos))
         continue
       }
       let decls : Array[InitDeclarator] = [self.parse_init_declarator()]
@@ -977,7 +1106,7 @@ fn Parser::parse_compound(self : Parser) -> StmtKind {
       }
       self.expect_punct(";")
       self.declare_typedefs(spec, decls)
-      items.push(BDecl(spec, decls))
+      items.push(BDecl(spec, decls, dpos))
     } else {
       items.push(BStmt(self.parse_stmt()))
     }
@@ -988,7 +1117,7 @@ fn Parser::parse_compound(self : Parser) -> StmtKind {
 ///|
 fn Parser::parse_stmt(self : Parser) -> Stmt {
   let tok = self.peek()
-  let pos = Span::{ line: tok.line, col: tok.col, }
+  let pos = Span::{ line: tok.line, col: tok.col, len: tok.len, }
   { kind: self.parse_stmt_kind(), pos, }
 }
 
@@ -1719,6 +1848,7 @@ pub fn parse(
   src : String,
   mode? : StdMode = C11,
   tagged_union? : Bool = false,
+  display? : String = "",
 ) -> TranslationUnit {
   // -std=cqe is C2y plus the QPCC extensions, so the tagged union is part of
   // the mode; -f_tagged_union still enables it on its own in the other modes.
@@ -1731,7 +1861,17 @@ pub fn parse(
     ] {
     typedefs.set(n, true)
   }
-  let p = Parser::{ toks, pos: 0, typedefs, mode, tagged_union: tagged, }
+  let p = Parser::{
+    src,
+    display,
+    toks,
+    pos: 0,
+    typedefs,
+    template_names: Map::new(),
+    template_defs: Map::new(),
+    mode,
+    tagged_union: tagged,
+  }
   let decls : Array[ExternalDecl] = []
   while !(p.peek().kind is Eof) {
     decls.push(p.parse_external_decl())

@@ -18,7 +18,11 @@ pub fn is_qpcc_keyword(String) -> Bool
 
 pub fn is_tagged_keyword(String) -> Bool
 
-pub fn parse(String, mode? : StdMode, tagged_union? : Bool) -> TranslationUnit
+pub fn parse(String, mode? : StdMode, tagged_union? : Bool, display? : String) -> TranslationUnit
+
+pub fn render_diag(String, String, String, String, Int, Int, Int) -> String
+
+pub fn source_line(String, Int) -> String
 
 pub fn tokenize(String, StdMode, tagged_union? : Bool) -> Array[Token]
 
@@ -32,7 +36,7 @@ pub(all) enum AlignmentSpec {
 
 pub(all) enum BlockItem {
   BStmt(Stmt)
-  BDecl(DeclSpec, Array[InitDeclarator])
+  BDecl(DeclSpec, Array[InitDeclarator], Span)
 }
 
 pub struct Capture {
@@ -157,6 +161,7 @@ pub struct ParamDecl {
 pub struct Span {
   line : Int
   col : Int
+  len : Int
 }
 
 pub(all) enum StdMode {
@@ -207,6 +212,7 @@ pub struct Token {
   kind : TokenKind
   line : Int
   col : Int
+  len : Int
 }
 pub fn Token::text(Self) -> String
 

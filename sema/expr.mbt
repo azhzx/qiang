@@ -405,6 +405,10 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
       let tct = decay(tc.ty)
       let mut chosen : TExpr? = None
       let mut dflt : TExpr? = None
+      // C11 6.5.1.1: no two associations may specify compatible types, and a
+      // generic selection has at most one default.
+      let seen : Array[CType] = []
+      let mut have_default = false
       for a in assocs {
         match a.spec {
           Some(spec) => {
@@ -414,11 +418,40 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
               None => @front.DAbstract
             }
             let ty = build_type(d, base, ctx)
+            for prev in seen {
+              // C keeps char, signed char and unsigned char apart, but this
+              // port models plain char as CChar(true) - the same as signed
+              // char - so comparing that pair would reject valid selections.
+              // Skip it rather than report a false positive; see TODO.md.
+              let both_char = match (prev, ty) {
+                (CChar(_), CChar(_)) => true
+                _ => false
+              }
+              if !both_char && ty_eq(prev, ty) {
+                ctx.diags.error(
+                  "two _Generic associations have compatible types",
+                )
+              }
+            }
+            seen.push(ty)
+            match ty {
+              CVoid | CFunc(_, _, _) =>
+                ctx.diags.error(
+                  "a _Generic association needs a complete object type",
+                )
+              _ => ()
+            }
             if ty_eq(ty, tct) {
               chosen = Some(check_expr(a.expr, ctx))
             }
           }
-          None => dflt = Some(check_expr(a.expr, ctx))
+          None => {
+            if have_default {
+              ctx.diags.error("a _Generic selection has at most one default")
+            }
+            have_default = true
+            dflt = Some(check_expr(a.expr, ctx))
+          }
         }
       }
       match chosen {

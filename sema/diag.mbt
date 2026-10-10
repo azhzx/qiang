@@ -10,6 +10,7 @@ pub struct Diag {
   sev : Severity
   line : Int
   col : Int
+  len : Int
   msg : String
 }
 
@@ -18,11 +19,12 @@ pub struct Diags {
   items : Array[Diag]
   mut cur_line : Int
   mut cur_col : Int
+  mut cur_len : Int
 }
 
 ///|
 pub fn Diags::new() -> Diags {
-  { items: [], cur_line: 0, cur_col: 0, }
+  { items: [], cur_line: 0, cur_col: 0, cur_len: 0, }
 }
 
 ///|
@@ -31,6 +33,7 @@ pub fn Diags::error(self : Diags, msg : String) -> Unit {
     sev: SevError,
     line: self.cur_line,
     col: self.cur_col,
+    len: self.cur_len,
     msg,
   })
 }
@@ -41,6 +44,7 @@ pub fn Diags::warning(self : Diags, msg : String) -> Unit {
     sev: SevWarning,
     line: self.cur_line,
     col: self.cur_col,
+    len: self.cur_len,
     msg,
   })
 }

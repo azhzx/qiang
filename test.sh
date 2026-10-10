@@ -26,18 +26,22 @@ for c in "$here"/tests/*.c; do
   inc=""
   exp=""
   # clang has no -std=cqe (it only knows c2y), so the preprocessing step and
-  # the reference build use cstd while QPCC gets std.
+  # the reference build use cstd while QPCC gets std. N3914's convertibility
+  # macros are QPCC's, so they are defined on the preprocessing command line.
   cstd=""
+  defs=""
   case "$hdr" in
     *"std=cqe"*)
       std="-std=cqe"
       cstd="-std=c2y"
       inc="$here/include/qbe"
+      defs="-D__STDC_PTR_CONV_ANY_FUNC_TO_VOID__=1 -D__STDC_PTR_CONV_VOID_TO_ANY_FUNC__=1 -D__STDC_PTR_CONV_FUNC_TO_VOID__=1 -D__STDC_PTR_CONV_VOID_TO_FUNC__=1"
       ;;
     *"std=c2y"*)
       std="-std=c2y"
       cstd="-std=c2y"
       inc="$here/include/qbe"
+      defs="-D__STDC_PTR_CONV_ANY_FUNC_TO_VOID__=1 -D__STDC_PTR_CONV_VOID_TO_ANY_FUNC__=1 -D__STDC_PTR_CONV_FUNC_TO_VOID__=1 -D__STDC_PTR_CONV_VOID_TO_FUNC__=1"
       ;;
     *"std=c23"*)
       std="-std=c23"
@@ -55,7 +59,7 @@ for c in "$here"/tests/*.c; do
   esac
   qpcc_src=$c
   if [ -n "$inc" ]; then
-    clang -E -P $cstd -I "$inc" "$c" > "$tmp/$base.i"
+    clang -E -P $cstd $defs -I "$inc" "$c" > "$tmp/$base.i"
     qpcc_src=$tmp/$base.i
   fi
   if [ -n "$exp" ]; then

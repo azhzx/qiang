@@ -165,6 +165,7 @@ pub struct Diag {
   sev : Severity
   line : Int
   col : Int
+  len : Int
   msg : String
 }
 
@@ -172,6 +173,7 @@ pub struct Diags {
   items : Array[Diag]
   mut cur_line : Int
   mut cur_col : Int
+  mut cur_len : Int
 }
 pub fn Diags::error(Self, String) -> Unit
 pub fn Diags::has_error(Self) -> Bool

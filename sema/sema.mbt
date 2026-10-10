@@ -345,6 +345,7 @@ pub fn const_eval_int(e : @front.Expr, ctx : Ctx) -> Int64 {
 fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
   ctx.diags.cur_line = d.pos.line
   ctx.diags.cur_col = d.pos.col
+  ctx.diags.cur_len = d.pos.len
   match d.kind {
     @front.EDecl(spec, decls) => {
       let base = declspec_to_type(spec, ctx)

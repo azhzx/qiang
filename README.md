@@ -139,6 +139,27 @@ Pass `-I <qpcc>/qpcc/include/qbe` to the external preprocessor, as
 `qpcc/test.sh` does for `std=c2y` fixtures. QPCC itself only recognizes the
 underscore keywords.
 
+## Pseudo-templates
+
+`Name_([T1, T2])` is an identifier whose spelling is the head plus a hash of
+the argument spelling, so the same instantiation names the same typedef in
+every translation unit:
+
+```c
+#define MkResult(T, E) typedef tagunion { T ok; E err; } Result_([T, E]);
+MkResult(int, int)
+Result_([int, int]) r = { .ok = 1 };
+```
+
+Arguments are matched by spelling, not resolved, and a repeat is a no-op. See
+`qpcc/tests/template.c`.
+
+## Diagnostics
+
+Errors are rustc-shaped - `error: msg`, a `-->` location, the source line and
+a caret run under the span - and a `_Generic` selection rejects compatible
+associations and a second `default`.
+
 ## CQE status
 
 `-std=cqe` is **C2y plus the QPCC extensions**, so `-std=c2y` stays exactly
