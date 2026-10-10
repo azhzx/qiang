@@ -280,8 +280,17 @@ fn run_subcommand(args : Array[String]) -> Unit {
     cmd = cmd + " " + shell_quote(a)
   }
   let raw = @native.mbt_native_run(@native.cstr(cmd))
-  // system() reports a wait status on POSIX; forward the child's exit code.
-  let code = (raw >> 8) & 0xff
+  // system() reports the raw wait status on POSIX. A status whose low seven
+  // bits are non-zero means the child died from a signal, and shifting that
+  // right yields zero - which is how a segfault used to be reported as a
+  // successful run. Report it the way a shell does instead.
+  let code = if raw == -1 {
+    1
+  } else if (raw & 0x7f) != 0 {
+    128 + (raw & 0x7f)
+  } else {
+    (raw >> 8) & 0xff
+  }
   ignore(@native.mbt_native_unlink(@native.cstr(i_path)))
   ignore(@native.mbt_native_unlink(@native.cstr(o_path)))
   ignore(@native.mbt_native_unlink(@native.cstr(exe_path)))
