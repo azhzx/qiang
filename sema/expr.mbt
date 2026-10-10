@@ -647,6 +647,17 @@ fn check_call(
   match callee {
     @front.EIdent(n) =>
       if ctx.scopes.lookup(n) is None {
+        // C99 removed implicit declarations. QPCC still accepts them, because
+        // its own self-host build relies on the non-variadic libc helpers the
+        // QBE sources call without a prototype, but a call without a prototype
+        // to a genuinely variadic callee (printf and friends) has to use the
+        // vararg ABI and cannot be inferred here - the arguments are passed
+        // wrong. Say so rather than emit silently wrong code.
+        ctx.diags.warning(
+          "implicit declaration of function '" +
+          n +
+          "'; include the header or declare it before use (a variadic callee needs its prototype)",
+        )
         ctx.scopes.define({
           name: n,
           gname: "",

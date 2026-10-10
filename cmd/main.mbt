@@ -79,7 +79,16 @@ fn front_end(
         )
         errs = errs + 1
       }
-      _ => ()
+      @sema.SevWarning =>
+        println(
+          display +
+          ":" +
+          d.line.to_string() +
+          ":" +
+          d.col.to_string() +
+          ": warning: " +
+          d.msg,
+        )
     }
   }
   if errs > 0 {
