@@ -33,6 +33,11 @@ pub(all) enum BlockItem {
   BDecl(DeclSpec, Array[InitDeclarator])
 }
 
+pub struct Capture {
+  name : String
+  by_ref : Bool
+}
+
 pub struct DeclSpec {
   storage : Array[String]
   qualifiers : Array[String]
@@ -89,8 +94,8 @@ pub(all) enum Expr {
   ECountofExpr(Expr)
   ECountofType(DeclSpec, Declarator)
   EAlignofExpr(Expr)
-  ETagOf(Expr)
-  EGetTag(DeclSpec, Declarator, String)
+  EDynamicTag(Expr)
+  EStaticTag(DeclSpec, Declarator, String)
   ETypesCompatible(DeclSpec, Declarator, DeclSpec, Declarator)
   ECall(Expr, Array[Expr])
   EIndex(Expr, Expr)
@@ -101,6 +106,8 @@ pub(all) enum Expr {
   EStmtExpr(Array[BlockItem])
   EOffsetof(DeclSpec, Declarator, Array[Designator])
   EVaArg(Expr, DeclSpec, Declarator)
+  ELambda(Array[Capture], DeclSpec, Array[ParamDecl], Bool, Stmt)
+  EClosureEnv(Expr)
   ETemp
 }
 
@@ -227,6 +234,9 @@ pub(all) enum TypeSpec {
   TTypeofType(DeclSpec, Declarator)
   TAtomicSpec(DeclSpec, Declarator)
   TBitInt(Expr)
+  TFuncPtr(DeclSpec, Array[ParamDecl], Bool)
+  TFuncPtrAny
+  TClosure(DeclSpec, Array[ParamDecl], Bool)
 }
 
 // Type aliases

@@ -165,6 +165,8 @@ fn Parser::is_type_start_at(self : Parser, off : Int) -> Bool {
       k == "struct" ||
       k == "union" ||
       k == "_Tagged_union" ||
+      k == "_Function_pointer" ||
+      (k == "_Lambda" && self.is_type_start_at(off + 1)) ||
       k == "enum" ||
       k == "typeof" ||
       k == "__typeof" ||
@@ -529,6 +531,27 @@ fn Parser::parse_declspec(self : Parser) -> DeclSpec {
             []
           }
           type_specs.push(TUnion(tag, body))
+        } else if k == "_Lambda" {
+          // _Lambda T (params) -- the written closure type.
+          self.pos = self.pos + 1
+          let ret = self.parse_declspec()
+          self.expect_punct("(")
+          let (params, va) = self.parse_param_list()
+          type_specs.push(TClosure(ret, params, va))
+        } else if k == "_Function_pointer" {
+          self.pos = self.pos + 1
+          if self.is_type_start() {
+            // _Function_pointer T (params) -- the function pointer type
+            // T (*)(params), written with the return type first.
+            let ret = self.parse_declspec()
+            self.expect_punct("(")
+            let (params, va) = self.parse_param_list()
+            type_specs.push(TFuncPtr(ret, params, va))
+          } else {
+            // A bare _Function_pointer is the any-function-pointer storage
+            // type; a declarator follows.
+            type_specs.push(TFuncPtrAny)
+          }
         } else if k == "_Tagged_union" {
           self.pos = self.pos + 1
           let tag = self.eat_ident()
@@ -1252,6 +1275,8 @@ fn Parser::parse_cast_expr(self : Parser) -> Expr {
         k == "struct" ||
         k == "union" ||
         k == "_Tagged_union" ||
+        k == "_Function_pointer" ||
+        (k == "_Lambda" && self.is_type_start_at(2)) ||
         k == "enum" ||
         k == "_Atomic" ||
         k == "typeof" ||
@@ -1328,14 +1353,14 @@ fn Parser::parse_unary_expr(self : Parser) -> Expr {
       self.pos = self.pos + 1
       EUnary(k, self.parse_cast_expr())
     }
-    Keyword("_Tag_of") => {
+    Keyword("_Dynamic_tag") => {
       self.pos = self.pos + 1
       self.expect_punct("(")
       let e = self.parse_expr()
       self.expect_punct(")")
-      ETagOf(e)
+      EDynamicTag(e)
     }
-    Keyword("_Get_tag") => {
+    Keyword("_Static_tag") => {
       self.pos = self.pos + 1
       self.expect_punct("(")
       let spec = self.parse_declspec()
@@ -1343,7 +1368,7 @@ fn Parser::parse_unary_expr(self : Parser) -> Expr {
       self.expect_punct(",")
       let m = self.expect_ident()
       self.expect_punct(")")
-      EGetTag(spec, d, m)
+      EStaticTag(spec, d, m)
     }
     Keyword("sizeof") => {
       self.pos = self.pos + 1
@@ -1354,6 +1379,8 @@ fn Parser::parse_unary_expr(self : Parser) -> Expr {
             k == "struct" ||
             k == "union" ||
             k == "_Tagged_union" ||
+            k == "_Function_pointer" ||
+            (k == "_Lambda" && self.is_type_start_at(2)) ||
             k == "enum" ||
             k == "_Atomic" ||
             k == "typeof" ||
@@ -1611,6 +1638,38 @@ fn Parser::parse_primary_expr(self : Parser) -> Expr {
     Keyword("nullptr") => {
       self.pos = self.pos + 1
       ENullptr
+    }
+    Keyword("_Lambda") => {
+      // QPCC closures: _Lambda(a, &b) T (params) { body }
+      self.pos = self.pos + 1
+      self.expect_punct("(")
+      let caps : Array[Capture] = []
+      if !self.eat_punct(")") {
+        let mut go = true
+        while go {
+          let by_ref = self.eat_punct("&")
+          let n = self.expect_ident()
+          caps.push({ name: n, by_ref, })
+          if self.eat_punct(",") {
+            continue
+          }
+          self.expect_punct(")")
+          go = false
+        }
+      }
+      let ret = self.parse_declspec()
+      self.expect_punct("(")
+      let (params, va) = self.parse_param_list()
+      let body = self.parse_compound_stmt()
+      ELambda(caps, ret, params, va, body)
+    }
+    Keyword("_Closure_environment") => {
+      // QPCC closures: the environment stored in a closure value.
+      self.pos = self.pos + 1
+      self.expect_punct("(")
+      let e = self.parse_expr()
+      self.expect_punct(")")
+      EClosureEnv(e)
     }
     Punct("(") => {
       self.pos = self.pos + 1

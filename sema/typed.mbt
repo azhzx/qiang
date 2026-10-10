@@ -27,6 +27,12 @@ pub(all) enum TExprKind {
   TStmtExpr(Array[TStmt])
   TCompoundLit(Array[(Int, TExpr, Int, Int)])
   TVaArg(TExpr)
+  // QPCC closures: build the { fn, env } pair. The String is the hidden
+  // function, the Int the environment layout, and each triple is a captured
+  // field (offset, source variable, captured by reference).
+  TLambda(String, Int, Array[(Int, TExpr, Bool)])
+  // QPCC closures: the environment pointer of a closure value.
+  TClosureEnv(TExpr)
   TUnsupported(String)
 }
 
@@ -91,6 +97,26 @@ pub struct CheckedGlobal {
 }
 
 ///|
+
+///|
+/// QPCC closures: one captured variable of a synthesized closure function.
+/// The name is bound to the environment field at `off`, so a by-value capture
+/// reads and writes its copy and a by-reference capture holds the pointer.
+pub struct ClosureCapture {
+  name : String
+  off : Int
+  ty : CType
+}
+
+///|
+/// QPCC closures: what a synthesized closure function needs on top of an
+/// ordinary function - the hidden first parameter holding the environment.
+pub struct ClosureInfo {
+  self_name : String
+  captures : Array[ClosureCapture]
+}
+
+///|
 pub struct CheckedFunc {
   name : String
   ty : CType
@@ -99,4 +125,6 @@ pub struct CheckedFunc {
   is_vararg : Bool
   is_export : Bool
   body : TStmt
+  // Some for the hidden function of a _Lambda expression.
+  closure : ClosureInfo?
 }

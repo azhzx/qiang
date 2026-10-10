@@ -293,7 +293,7 @@ pub fn const_eval_int(e : @front.Expr, ctx : Ctx) -> Int64 {
         const_eval_int(f, ctx)
       }
     @front.ECast(_, _, x) => const_eval_int(x, ctx)
-    @front.EGetTag(spec, d, m) =>
+    @front.EStaticTag(spec, d, m) =>
       match build_type(d, declspec_to_type(spec, ctx), ctx) {
         CStruct(i) | CUnion(i) =>
           match tag_of(ctx.layouts[i], m) {
@@ -534,6 +534,7 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
         is_vararg,
         is_export: !(storage_of(spec) is StStatic),
         body: tb,
+        closure: None,
       })
     }
     @front.EStaticAssert(e, _msg) =>

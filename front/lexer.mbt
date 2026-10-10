@@ -140,7 +140,13 @@ pub fn is_c23_keyword(s : String) -> Bool {
 /// C2y-only keywords. In C11/C23 mode these are ordinary identifiers.
 pub fn is_c2y_keyword(s : String) -> Bool {
   match s {
-    "_Countof" | "_Maxof" | "_Minof" | "_Defer" => true
+    "_Countof"
+    | "_Maxof"
+    | "_Minof"
+    | "_Defer"
+    | "_Function_pointer"
+    | "_Lambda"
+    | "_Closure_environment" => true
     _ => false
   }
 }
@@ -152,7 +158,7 @@ pub fn is_c2y_keyword(s : String) -> Bool {
 /// identifiers.
 pub fn is_tagged_keyword(s : String) -> Bool {
   match s {
-    "_Tagged_union" | "_Tag_of" | "_Get_tag" => true
+    "_Tagged_union" | "_Dynamic_tag" | "_Static_tag" => true
     _ => false
   }
 }

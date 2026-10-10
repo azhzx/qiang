@@ -21,6 +21,27 @@ pub(all) enum CType {
   CUnion(Int)
   CEnum(Int)
   CBitInt(Int)
+  // QPCC/N3914: the `_Any_func` function type. It never appears on its own;
+  // `_Function_pointer` is the pointer to it, which is the storage type.
+  CAnyFunc
+  // QPCC closures: a two-word { function pointer, environment pointer } value.
+  // The Int is the layout of the captured environment, or -1 for the written
+  // type `_Lambda T (params)` where no environment is known yet.
+  CClosure(CType, Array[CType], Int)
+}
+
+///|
+/// Element-wise type equality, used for parameter lists.
+fn same_types(a : Array[CType], b : Array[CType]) -> Bool {
+  if a.length() != b.length() {
+    return false
+  }
+  for i in 0..<a.length() {
+    if !ty_eq(a[i], b[i]) {
+      return false
+    }
+  }
+  true
 }
 
 ///|
@@ -60,6 +81,14 @@ pub fn ty_eq(a : CType, b : CType) -> Bool {
     | (CUnion(x), CUnion(y))
     | (CEnum(x), CEnum(y))
     | (CBitInt(x), CBitInt(y)) => x == y
+    // N3914 4.6: adding the any-function type changes no compatible type, so
+    // `_Any_func` is compatible with itself and with nothing else - in
+    // particular not with any other function type.
+    (CAnyFunc, CAnyFunc) => true
+    // Two closures are the same type when their signatures match; the captured
+    // environment is not part of the written type `_Lambda T (params)`.
+    (CClosure(r1, p1, _), CClosure(r2, p2, _)) =>
+      ty_eq(r1, r2) && same_types(p1, p2)
     _ => false
   }
 }
@@ -175,6 +204,8 @@ pub fn size_of_ty(t : CType, layouts : Array[Layout]) -> Int {
     CArray(e, n) => size_of_ty(e, layouts) * (if n == 0 { 0 } else { n })
     CVLA(e, _) => size_of_ty(e, layouts)
     CFunc(_, _, _) => 1
+    CAnyFunc => 1
+    CClosure(_, _, _) => 16
     CStruct(i) | CUnion(i) => layouts[i].size
     CBitInt(n) =>
       if n <= 8 {
@@ -201,6 +232,8 @@ pub fn align_of_ty(t : CType, layouts : Array[Layout]) -> Int {
     CArray(e, _) => align_of_ty(e, layouts)
     CVLA(e, _) => align_of_ty(e, layouts)
     CFunc(_, _, _) => 1
+    CAnyFunc => 1
+    CClosure(_, _, _) => 8
     CStruct(i) | CUnion(i) => layouts[i].align
     CBitInt(n) =>
       if n <= 8 {

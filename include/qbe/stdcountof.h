@@ -1,6 +1,6 @@
-#ifndef __STDCOUNTOF_H
-#define __STDCOUNTOF_H
+#ifndef __QPCC_QBE_STDCOUNTOF_H
+#define __QPCC_QBE_STDCOUNTOF_H
 
 #define countof _Countof
 
-#endif /* __STDCOUNTOF_H */
+#endif /* __QPCC_QBE_STDCOUNTOF_H */

@@ -103,7 +103,7 @@ pub fn is_const_expr(e : @front.Expr, ctx : Ctx) -> Bool {
     @front.ESizeofType(_, _) | @front.EAlignofType(_, _) => true
     @front.EMaxofType(_, _) | @front.EMinofType(_, _) => true
     @front.ECountofExpr(_) | @front.ECountofType(_, _) => true
-    @front.EGetTag(_, _, _) => true
+    @front.EStaticTag(_, _, _) => true
     _ => false
   }
 }
@@ -183,6 +183,27 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
         base = Some(build_type(d2, b, ctx))
       }
       @front.TBitInt(e) => base = Some(CBitInt(const_eval_int(e, ctx).to_int()))
+      @front.TFuncPtr(ret, params, va) => {
+        let r = declspec_to_type(ret, ctx)
+        let ps : Array[CType] = []
+        for p in params {
+          let b = declspec_to_type(p.spec, ctx)
+          ps.push(build_type(p.decl, b, ctx))
+        }
+        base = Some(CPtr(CFunc(r, ps, va)))
+      }
+      @front.TFuncPtrAny => base = Some(CPtr(CAnyFunc))
+      @front.TClosure(ret, params, _va) => {
+        // The written form names no environment; a closure expression fills it
+        // in, which is what `_Closure_environment` needs.
+        let r = declspec_to_type(ret, ctx)
+        let ps : Array[CType] = []
+        for p in params {
+          let b = declspec_to_type(p.spec, ctx)
+          ps.push(build_type(p.decl, b, ctx))
+        }
+        base = Some(CClosure(r, ps, -1))
+      }
     }
   }
   let b = match base {

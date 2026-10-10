@@ -227,6 +227,9 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
       mk_expr(TCond(tc, tt, tf), common_type(tt.ty, tf.ty), false)
     }
     @front.ECall(callee, args) => check_call(callee, args, ctx)
+    @front.ELambda(caps, ret, params, va, body) =>
+      check_lambda(caps, ret, params, va, body, ctx)
+    @front.EClosureEnv(e) => check_closure_env(e, ctx)
     @front.ECast(spec, d, x) => {
       let base = declspec_to_type(spec, ctx)
       let ty = build_type(d, base, ctx)
@@ -354,7 +357,7 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
         }
       }
     }
-    @front.ETagOf(x) => {
+    @front.EDynamicTag(x) => {
       let tx = check_expr(x, ctx)
       match decay(tx.ty) {
         CStruct(i) | CUnion(i) =>
@@ -362,20 +365,20 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
             if tx.lvalue {
               mk_expr(TMember(tx, 0), CInt(true), false)
             } else {
-              ctx.diags.error("_Tag_of needs an lvalue")
+              ctx.diags.error("_Dynamic_tag needs an lvalue")
               err_expr(ctx)
             }
           } else {
-            ctx.diags.error("_Tag_of needs a _Tagged_union")
+            ctx.diags.error("_Dynamic_tag needs a _Tagged_union")
             err_expr(ctx)
           }
         _ => {
-          ctx.diags.error("_Tag_of needs a _Tagged_union")
+          ctx.diags.error("_Dynamic_tag needs a _Tagged_union")
           err_expr(ctx)
         }
       }
     }
-    @front.EGetTag(spec, d, m) => {
+    @front.EStaticTag(spec, d, m) => {
       let ty = build_type(d, declspec_to_type(spec, ctx), ctx)
       match ty {
         CStruct(i) | CUnion(i) =>
@@ -388,11 +391,11 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
               }
             }
           } else {
-            ctx.diags.error("_Get_tag needs a _Tagged_union")
+            ctx.diags.error("_Static_tag needs a _Tagged_union")
             err_expr(ctx)
           }
         _ => {
-          ctx.diags.error("_Get_tag needs a _Tagged_union")
+          ctx.diags.error("_Static_tag needs a _Tagged_union")
           err_expr(ctx)
         }
       }
@@ -681,6 +684,29 @@ fn check_call(
   let tc = check_expr(callee, ctx)
   let targs : Array[TExpr] = []
   let fty = decay(tc.ty)
+  // QPCC closures: a call goes through the pair, with the environment passed
+  // as the hidden leading argument.
+  match fty {
+    CClosure(r, ps, env) => {
+      if !tc.lvalue {
+        ctx.diags.error("a closure call needs an lvalue closure")
+      }
+      let env_ty = if env >= 0 { CPtr(CStruct(env)) } else { CPtr(CVoid) }
+      let fparams : Array[CType] = [env_ty]
+      for p in ps {
+        fparams.push(p)
+      }
+      let fn_ty = CPtr(CFunc(r, fparams, false))
+      let fnp = mk_expr(TMember(tc, 0), fn_ty, false)
+      let envp = mk_expr(TClosureEnv(tc), env_ty, false)
+      let cargs : Array[TExpr] = [envp]
+      for a in args {
+        cargs.push(check_expr(a, ctx))
+      }
+      return mk_expr(TCall("", fnp, cargs), r, false)
+    }
+    _ => ()
+  }
   let (name, ret, params, va) = match fty {
     CPtr(CFunc(r, ps, v)) => {
       let nm = match callee {
@@ -695,6 +721,15 @@ fn check_call(
         _ => ""
       }
       (nm, r, ps, v)
+    }
+    CPtr(CAnyFunc) => {
+      // N3914: the any-function-pointer storage type is deliberately not
+      // callable - there is no single ABI for "all function calls". A cast to
+      // the concrete signature is required first.
+      ctx.diags.error(
+        "a _Function_pointer cannot be called; cast it to a function pointer type first",
+      )
+      ("", CInt(false), [], true)
     }
     _ => {
       ctx.diags.error("called object is not a function")

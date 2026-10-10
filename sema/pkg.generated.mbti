@@ -95,6 +95,8 @@ pub(all) enum CType {
   CUnion(Int)
   CEnum(Int)
   CBitInt(Int)
+  CAnyFunc
+  CClosure(CType, Array[CType], Int)
 }
 
 pub struct CheckedFunc {
@@ -105,6 +107,7 @@ pub struct CheckedFunc {
   is_vararg : Bool
   is_export : Bool
   body : TStmt
+  closure : ClosureInfo?
 }
 
 pub struct CheckedGlobal {
@@ -123,6 +126,17 @@ pub struct CheckedProgram {
   globals : Array[CheckedGlobal]
   strings : Array[String]
   diags : Array[Diag]
+}
+
+pub struct ClosureCapture {
+  name : String
+  off : Int
+  ty : CType
+}
+
+pub struct ClosureInfo {
+  self_name : String
+  captures : Array[ClosureCapture]
 }
 
 pub struct Ctx {
@@ -265,6 +279,8 @@ pub(all) enum TExprKind {
   TStmtExpr(Array[TStmt])
   TCompoundLit(Array[(Int, TExpr, Int, Int)])
   TVaArg(TExpr)
+  TLambda(String, Int, Array[(Int, TExpr, Bool)])
+  TClosureEnv(TExpr)
   TUnsupported(String)
 }
 

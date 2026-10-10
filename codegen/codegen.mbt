@@ -45,7 +45,8 @@ fn cls_of(ty : @sema.CType) -> @types.Class {
     | @sema.CVLA(_, _)
     | @sema.CStruct(_)
     | @sema.CUnion(_)
-    | @sema.CComplex(_) => @types.Kl
+    | @sema.CComplex(_)
+    | @sema.CClosure(_, _, _) => @types.Kl
     _ => @types.Kw
   }
 }
@@ -332,8 +333,27 @@ fn is_composite(ty : @sema.CType) -> Bool {
     | @sema.CUnion(_)
     | @sema.CArray(_, _)
     | @sema.CVLA(_, _)
-    | @sema.CComplex(_) => true
+    | @sema.CComplex(_)
+    | @sema.CClosure(_, _, _) => true
     _ => false
+  }
+}
+
+///|
+
+///|
+/// Address plus a constant byte offset.
+fn Cg::add_off(c : Cg, addr : Int, off : Int) -> Int {
+  if off == 0 {
+    addr
+  } else {
+    c.b.arith(
+      c.fid,
+      @types.Add,
+      @types.Kl,
+      addr,
+      c.b.iconst(c.fid, off.to_int64()),
+    )
   }
 }
 
@@ -617,6 +637,38 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
             }
           }
       }
+    @sema.TClosureEnv(x) =>
+      // The environment is the second word of the { fn, env } pair.
+      c.b.load(c.fid, @types.Load, @types.Kl, c.add_off(c.gen_expr(x), 8))
+    @sema.TLambda(hidden, env_id, caps) => {
+      // Fill in the captured environment, then build the pair. The
+      // environment is a local of the enclosing function, so a closure that
+      // outlives the scope it was created in is undefined behaviour.
+      let env_slot = c.alloc_slot(
+        @sema.size_of_ty(@sema.CStruct(env_id), c.layouts),
+      )
+      for entry in caps {
+        let (off, src, by_ref) = entry
+        let faddr = c.add_off(env_slot, off)
+        if by_ref {
+          let av = c.gen_addr(src)
+          c.b.store(c.fid, @types.Storel, @types.Kw, av, faddr)
+        } else if is_composite(src.ty) {
+          c.emit_memcpy(
+            faddr,
+            c.gen_expr(src),
+            @sema.size_of_ty(src.ty, c.layouts),
+          )
+        } else {
+          c.store_scalar(src.ty, c.gen_expr(src), faddr)
+        }
+      }
+      let slot = c.alloc_slot(16)
+      let fnp = c.b.global(c.fid, hidden)
+      c.b.store(c.fid, @types.Storel, @types.Kw, fnp, slot)
+      c.b.store(c.fid, @types.Storel, @types.Kw, env_slot, c.add_off(slot, 8))
+      slot
+    }
     @sema.TAddr(x) => c.gen_addr(x)
     @sema.TDeref(p) => {
       let a = c.gen_expr(p)
@@ -2121,6 +2173,23 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
       c.locals.set(n, slot)
       c.local_ty.set(n, ty)
     }
+  }
+  // QPCC closures: the captures are not locals of this function - they live in
+  // the environment the hidden first parameter points at, so each name is
+  // bound to its field's address instead of to a fresh slot.
+  match f.closure {
+    Some(ci) =>
+      match c.locals.get(ci.self_name) {
+        Some(self_slot) => {
+          let envp = c.b.load(c.fid, @types.Load, @types.Kl, self_slot)
+          for cap in ci.captures {
+            c.locals.set(cap.name, c.add_off(envp, cap.off))
+            c.local_ty.set(cap.name, cap.ty)
+          }
+        }
+        None => ()
+      }
+    None => ()
   }
   for entry in f.locals {
     let (n, t, al) = entry
