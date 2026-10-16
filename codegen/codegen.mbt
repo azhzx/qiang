@@ -923,21 +923,44 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
       let then_b = c.new_block("cond.then")
       let else_b = c.new_block("cond.else")
       let join = c.new_block("cond.join")
-      let p = c.b.block_param(c.fid, join, cls_of(e.ty))
+      // A conditional of type void has no value to merge. Lua's luaC_barrier
+      // expands to `cond ? luaC_barrier_(...) : cast_void(0)`, so both arms are
+      // void and neither produces a value. Creating a phi anyway left the join
+      // with a parameter no arm could supply; the IR was invalid and the arm64
+      // backend compiled it into silently wrong code - which is what made Lua
+      // loops look like they never ran.
+      let has_val = !(e.ty is CVoid)
+      let p = if has_val {
+        c.b.block_param(c.fid, join, cls_of(e.ty))
+      } else {
+        0
+      }
       let cv = c.gen_expr(cond)
       let truth = c.truthy(cond.ty, cv)
       c.b.jnz(c.fid, truth, then_b, [], else_b, [])
       c.open = false
       c.switch(then_b)
       let tv = c.gen_expr(t)
-      c.b.jmp(c.fid, join, [c.convert(tv, t.ty, e.ty)])
+      if has_val {
+        c.b.jmp(c.fid, join, [c.convert(tv, t.ty, e.ty)])
+      } else {
+        c.b.jmp(c.fid, join, [])
+      }
       c.open = false
       c.switch(else_b)
       let fv = c.gen_expr(f)
-      c.b.jmp(c.fid, join, [c.convert(fv, f.ty, e.ty)])
+      if has_val {
+        c.b.jmp(c.fid, join, [c.convert(fv, f.ty, e.ty)])
+      } else {
+        c.b.jmp(c.fid, join, [])
+      }
       c.open = false
       c.switch(join)
-      p
+      if has_val {
+        p
+      } else {
+        c.b.iconst(c.fid, 0L)
+      }
     }
     @sema.TSizeof(n) => c.b.iconst(c.fid, n.to_int64())
     @sema.TAlignof(n) => c.b.iconst(c.fid, n.to_int64())
