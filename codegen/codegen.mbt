@@ -102,6 +102,34 @@ fn is_uns(ty : @sema.CType) -> Bool {
 }
 
 ///|
+// C integer promotion: char and short, signed or not, become int.
+fn promote_small(ty : @sema.CType) -> @sema.CType {
+  match ty {
+    @sema.CChar(_) | @sema.CShort(_) => @sema.CInt(true)
+    _ => ty
+  }
+}
+
+///|
+// Is the result of an integer binary operation unsigned? C promotes each
+// operand first, so unsigned char becomes int and (int >= unsigned char) is a
+// SIGNED comparison. Asking whether either operand is unsigned made it
+// unsigned: Lua's freereg tests (reg >= luaY_nvarstack(fs)), int against
+// lu_byte, where a -1 register compared as 0xFFFFFFFF and spuriously
+// decremented freereg, shifting every later register in the bytecode.
+fn usual_uns(c : Cg, l : @sema.CType, r : @sema.CType) -> Bool {
+  let a = promote_small(l)
+  let b = promote_small(r)
+  if is_uns(a) == is_uns(b) {
+    is_uns(a)
+  } else {
+    let u = if is_uns(a) { a } else { b }
+    let s = if is_uns(a) { b } else { a }
+    size_of(u, c.layouts) >= size_of(s, c.layouts)
+  }
+}
+
+///|
 fn wider(l : @sema.CType, r : @sema.CType) -> @types.Class {
   let a = cls_of(l)
   let b = cls_of(r)
@@ -1208,7 +1236,7 @@ fn Cg::gen_bin(
   let rt = @sema.decay(r.ty)
   let cls = wider(lt, rt)
   let fl = is_flt(lt) || is_flt(rt)
-  let uns = is_uns(lt) || is_uns(rt) || is_ptr_ty(lt) || is_ptr_ty(rt)
+  let uns = usual_uns(c, lt, rt) || is_ptr_ty(lt) || is_ptr_ty(rt)
   if is_cmp(op) {
     let a = c.gen_expr(l)
     let av = c.coerce(a, cls_of(lt), cls)
