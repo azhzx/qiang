@@ -12,5 +12,10 @@ int ispunct(int);
 int isxdigit(int);
 int tolower(int);
 int toupper(int);
+int iscntrl(int);
+int isgraph(int);
+int isblank(int);
+int isascii(int);
+int toascii(int);
 
 #endif /* __QPCC_QBE_CTYPE_H */

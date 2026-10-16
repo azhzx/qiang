@@ -4,6 +4,7 @@
 #define EXIT_FAILURE 1
 #define RAND_MAX 2147483647
 #define MB_CUR_MAX 6
+int system(char *);
 
 #include <stddef.h>
 void *malloc(size_t);

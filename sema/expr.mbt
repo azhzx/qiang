@@ -846,11 +846,38 @@ fn builtin_inf_call(
         // meaning; check the call as that function instead.
         None =>
           match builtin_rewrite(n) {
-            Some(to) => Some(check_call(@front.EIdent(to), args, ctx))
+            Some(to) => {
+              // <math.h> uses __builtin_fabs* before it declares fabs*, so the
+              // rewrite has to supply the prototype: an implicitly declared
+              // function returns int and the double would be truncated.
+              define_libm(ctx, to)
+              Some(check_call(@front.EIdent(to), args, ctx))
+            }
             None => None
           }
       }
     _ => None
+  }
+}
+
+///|
+/// Declare a libm function with its real prototype unless something already
+/// declared it.
+fn define_libm(ctx : Ctx, to : String) -> Unit {
+  if ctx.scopes.lookup(to) is None {
+    let (ret, param) = match to {
+      "fabsf" | "sqrtf" => (CFloat, CFloat)
+      "fabsl" => (CLongDouble, CLongDouble)
+      _ => (CDouble, CDouble)
+    }
+    ctx.scopes.define({
+      name: to,
+      gname: to,
+      kind: SymFunc,
+      ty: CFunc(ret, [param], false),
+      storage: StNone,
+      value: 0L,
+    })
   }
 }
 
