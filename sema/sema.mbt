@@ -13,6 +13,10 @@ pub struct Ctx {
   globals : Array[CheckedGlobal]
   mut cur_params : Array[(String, CType)]
   mut cur_locals : Array[(String, CType, Int)]
+  // Distinguishes two locals that share a name in sibling scopes (see
+  // check_decl in stmt.mbt).
+  mut local_seq : Int
+  local_names : Map[String, Bool]
   mut loop_depth : Int
   mut switch_depth : Int
   // C2y named loops: the label waiting to name the next loop/switch, and the
@@ -462,6 +466,7 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
       ctx.scopes.push()
       ctx.cur_params = []
       ctx.cur_locals = []
+      ctx.local_names.clear()
       ctx.loop_depth = 0
       ctx.switch_depth = 0
       ctx.gotos = []
@@ -582,6 +587,8 @@ pub fn check(
     globals: [],
     cur_params: [],
     cur_locals: [],
+    local_seq: 0,
+    local_names: Map::new(),
     loop_depth: 0,
     switch_depth: 0,
     label_pending: [],

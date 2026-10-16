@@ -337,6 +337,26 @@ fn check_local_decl(
               },
             })
           } else {
+            // Two declarations of one name in sibling scopes denote different
+            // objects. The code generator binds locals by name in a single
+            // flat map, so a shadowing declaration needs a name of its own;
+            // otherwise both share one slot and each is read through the
+            // other's type. Lua's forprep has an integer and a floating-point
+            // `step` in the two arms of one `if`, which came out as `ceql` on
+            // a double.
+            // A name that is already bound, or that was declared earlier in
+            // this function, needs a name of its own: the generator's binding
+            // map is flat and lives for the whole function.
+            let shadowed = ctx.scopes.lookup(n) is Some(_) ||
+              ctx.local_names.contains(n)
+            let lname = if shadowed {
+              let u = n + "#" + ctx.local_seq.to_string()
+              ctx.local_seq = ctx.local_seq + 1
+              u
+            } else {
+              n
+            }
+            ctx.local_names.set(lname, true)
             match idecl.init {
               Some(@front.IExpr(e)) => {
                 let te = check_expr(e, ctx)
@@ -351,7 +371,7 @@ fn check_local_decl(
                     }
                   _ => ()
                 }
-                out.push({ kind: KSDecl(n, ty, Some(te), al), })
+                out.push({ kind: KSDecl(lname, ty, Some(te), al), })
               }
               Some(@front.IList(_)) => {
                 let stores : Array[(Int, TExpr, Int, Int)] = []
@@ -359,9 +379,9 @@ fn check_local_decl(
                   Some(init) => check_init_into(init, ty, 0, stores, ctx)
                   None => ()
                 }
-                out.push({ kind: KSAggInit(n, ty, stores, al), })
+                out.push({ kind: KSAggInit(lname, ty, stores, al), })
               }
-              None => out.push({ kind: KSDecl(n, ty, None, al), })
+              None => out.push({ kind: KSDecl(lname, ty, None, al), })
             }
             let is_cexpr = has_qualifier(spec, "constexpr")
             let cval : Int64 = if is_cexpr {
@@ -385,7 +405,13 @@ fn check_local_decl(
             }
             ctx.scopes.define({
               name: n,
-              gname: "",
+              // A renamed local resolves to its own name too, so the
+              // generator's flat binding map finds its own slot.
+              gname: if lname == n {
+                ""
+              } else {
+                lname
+              },
               kind: if is_cexpr {
                 SymConstVar
               } else {
