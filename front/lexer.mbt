@@ -68,6 +68,8 @@ pub fn is_keyword(s : String) -> Bool {
     | "_Atomic"
     | "_Bool"
     | "_Complex"
+    | "_Float16"
+    | "__fp16"
     | "_Generic"
     | "_Imaginary"
     | "_Noreturn"

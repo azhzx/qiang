@@ -226,7 +226,11 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
       let tf = check_expr(f, ctx)
       mk_expr(TCond(tc, tt, tf), common_type(tt.ty, tf.ty), false)
     }
-    @front.ECall(callee, args) => check_call(callee, args, ctx)
+    @front.ECall(callee, args) =>
+      match builtin_inf_call(callee, args, ctx) {
+        Some(t) => t
+        None => check_call(callee, args, ctx)
+      }
     @front.ELambda(caps, ret, params, va, body) =>
       check_lambda(caps, ret, params, va, body, ctx)
     @front.EClosureEnv(e) => check_closure_env(e, ctx)
@@ -805,6 +809,62 @@ fn check_call(
     ctx.diags.error("too many arguments to function: " + name)
   }
   mk_expr(TCall(name, tc, targs), ret, false)
+}
+
+///|
+
+///|
+/// The C `__builtin_inf` family: an infinity constant of the named type.
+fn builtin_inf_ty(n : String) -> CType? {
+  match n {
+    "__builtin_inf" | "__builtin_huge_val" => Some(CDouble)
+    "__builtin_inff" | "__builtin_huge_valf" => Some(CFloat)
+    "__builtin_infl" | "__builtin_huge_vall" => Some(CLongDouble)
+    _ => None
+  }
+}
+
+///|
+/// Darwin's <math.h> builds isfinite/isinf out of __builtin_infl() and friends.
+/// They are constants, not calls: leaving them as calls emitted a reference to
+/// a symbol that does not exist, which broke the link.
+fn builtin_inf_call(
+  callee : @front.Expr,
+  args : Array[@front.Expr],
+  ctx : Ctx,
+) -> TExpr? {
+  match callee {
+    @front.EIdent(n) =>
+      match builtin_inf_ty(n) {
+        Some(ty) =>
+          if args.length() == 0 {
+            Some(mk_expr(TFlt(1.0 / 0.0, ty is CFloat), ty, false))
+          } else {
+            None
+          }
+        // Other Darwin <math.h> inlines name the libm function of the same
+        // meaning; check the call as that function instead.
+        None =>
+          match builtin_rewrite(n) {
+            Some(to) => Some(check_call(@front.EIdent(to), args, ctx))
+            None => None
+          }
+      }
+    _ => None
+  }
+}
+
+///|
+/// `__builtin_x` that <math.h> uses as an inline for the libm `x`.
+fn builtin_rewrite(n : String) -> String? {
+  match n {
+    "__builtin_fabs" => Some("fabs")
+    "__builtin_fabsf" => Some("fabsf")
+    "__builtin_fabsl" => Some("fabsl")
+    "__builtin_sqrt" => Some("sqrt")
+    "__builtin_sqrtf" => Some("sqrtf")
+    _ => None
+  }
 }
 
 ///|

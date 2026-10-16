@@ -141,6 +141,17 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
           "int" => if base is None { base = Some(CInt(false)) }
           "char" => base = Some(CChar(true))
           "void" => base = Some(CVoid)
+          "_Float16" | "__fp16" => {
+            // C23 half precision. This port has no half type of its own, so it
+            // is accepted and treated as float. That is invisible for the
+            // common case - a prototype pulled in from a system header - but a
+            // real half-precision object would be the wrong size, hence the
+            // warning.
+            ctx.diags.warning(
+              "_Float16 is treated as float: this port has no half-precision type",
+            )
+            base = Some(CFloat)
+          }
           "float" => base = Some(CFloat)
           "double" => base = Some(CDouble)
           "_Bool" | "bool" => base = Some(CBool)

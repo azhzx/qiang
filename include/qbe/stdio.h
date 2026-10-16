@@ -39,6 +39,17 @@ int remove(char *);
 int rename(char *, char *);
 #ifndef EOF
 #define EOF (-1)
+#define BUFSIZ 1024
+#define FOPEN_MAX 20
+#define FILENAME_MAX 1024
+#define L_tmpnam 1024
+#define TMP_MAX 308915776
+#define SEEK_SET 0
+#define SEEK_CUR 1
+#define SEEK_END 2
+#define _IOFBF 0
+#define _IOLBF 1
+#define _IONBF 2
 #endif
 
 #endif /* __QPCC_QBE_STDIO_H */

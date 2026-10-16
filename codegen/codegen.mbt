@@ -2212,6 +2212,13 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
   let label_names : Array[String] = []
   collect_labels(f.body, label_names)
   c.label_depths.clear()
+  // These are per function too. Lua has a `retry:` label in both luaD_precall
+  // and luaD_pretailcall; a leftover entry made the second one take the
+  // "already emitted" path, so its block was never switched to and stayed
+  // unterminated (Jxxx), which the arm64 emitters reject.
+  c.labels.clear()
+  c.label_ids.clear()
+  c.emitted_labels.clear()
   collect_label_depths(f.body, 0, c.label_depths)
   c.cur_labels = []
   for n in label_names {
@@ -2225,6 +2232,11 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
     }
     c.cur_labels.push(n)
   }
+  // The entry block is open until something terminates it. Without this a
+  // function whose first statement is a label - Lua's
+  // `retry: switch (...)` - never jumps into the label's block, so that block
+  // stays unterminated (Jxxx) and the arm64 emitters reject the function.
+  c.open = true
   c.gen_stmt(f.body)
   if c.open {
     if c.ret_sret {

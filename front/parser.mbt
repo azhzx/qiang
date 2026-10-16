@@ -154,6 +154,8 @@ fn is_basic_type_kw(k : String) -> Bool {
     | "_Bool"
     | "_Complex"
     | "_Imaginary"
+    | "_Float16"
+    | "__fp16"
     | "__int128"
     | "__signed"
     | "__signed__"
