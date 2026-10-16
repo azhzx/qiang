@@ -536,7 +536,13 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
         params: ctx.cur_params,
         locals: ctx.cur_locals,
         is_vararg,
-        is_export: !(storage_of(spec) is StStatic),
+        // C99 6.7.4p6: an inline definition that no declaration in the
+        // translation unit pairs with extern provides no external definition.
+        // Emitting a strong global instead made the same function arrive from
+        // every object that includes the header - Darwin's <math.h> helpers do
+        // exactly that, and Lua's link then failed with 20 duplicate symbols.
+        is_export: !(storage_of(spec) is StStatic) &&
+        !(is_inline_def(spec) && !(storage_of(spec) is StExtern)),
         body: tb,
         closure: None,
       })
@@ -551,6 +557,16 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
 
 ///|
 /// Check a translation unit: build types, layouts and symbols.
+
+///|
+/// Is this declaration an `inline` definition without `static` or `extern`?
+fn is_inline_def(spec : @front.DeclSpec) -> Bool {
+  spec.func_specs.contains("inline") ||
+  spec.func_specs.contains("__inline") ||
+  spec.func_specs.contains("__inline__")
+}
+
+///|
 pub fn check(
   tu : @front.TranslationUnit,
   mode? : @front.StdMode = @front.Cqe,
