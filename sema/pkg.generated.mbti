@@ -150,6 +150,8 @@ pub struct Ctx {
   globals : Array[CheckedGlobal]
   mut cur_params : Array[(String, CType)]
   mut cur_locals : Array[(String, CType, Int)]
+  mut local_seq : Int
+  local_names : Map[String, Bool]
   mut loop_depth : Int
   mut switch_depth : Int
   label_pending : Array[String]
