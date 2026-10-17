@@ -9,11 +9,20 @@
 /// input uses #include/#define beyond simple directives (plain # lines are
 /// stripped here). \`qpcc run\` drives clang for the preprocessing and the
 /// linking, so an ordinary C file can be compiled and executed in one step.
+
+///|
+// Diagnostics go to stderr. stdout carries the compiler real output
+// (--emit qbe, --emit asm, the object), and 2>/dev/null must not swallow errors.
+fn eprint(s : String) -> Unit {
+  @native.mbt_native_eprint(@native.cstr(s))
+}
+
+///|
 fn usage() -> Unit {
-  println(
+  eprint(
     "usage: qpcc <input.c> [-o out.o] [--emit obj|asm|qbe] [-std=c11|c23|c2y] [--check] [-f_tagged_union]",
   )
-  println(
+  eprint(
     "       qpcc run [-std=c11|c23|c2y] [-f_tagged_union] [-I dir] [-D name[=v]] <input.c> [-- args...]",
   )
 }
@@ -58,7 +67,7 @@ fn front_end(
 ) -> @sema.CheckedProgram? {
   let src = @fs.read_file_to_string(input) catch {
     _ => {
-      println("qpcc: cannot read " + display)
+      eprint("qpcc: cannot read " + display)
       return None
     }
   }
@@ -71,7 +80,7 @@ fn front_end(
   for d in prog.diags {
     match d.sev {
       @sema.SevError => {
-        println(
+        eprint(
           @front.render_diag(
             display,
             shown,
@@ -85,7 +94,7 @@ fn front_end(
         errs = errs + 1
       }
       @sema.SevWarning =>
-        println(
+        eprint(
           @front.render_diag(
             display,
             shown,
@@ -99,7 +108,7 @@ fn front_end(
     }
   }
   if errs > 0 {
-    println("qpcc: " + errs.to_string() + " error(s)")
+    eprint("qpcc: " + errs.to_string() + " error(s)")
     return None
   }
   Some(prog)
@@ -159,7 +168,7 @@ fn ptr_conv_macros() -> String {
 fn run_subcommand(args : Array[String]) -> Unit {
   if @native.mbt_native_run(@native.cstr("command -v clang >/dev/null 2>&1")) !=
     0 {
-    println(
+    eprint(
       "qpcc run: clang is required (it does the preprocessing and the linking) but was not found on PATH; install clang and retry",
     )
     @native.mbt_native_exit(1)
@@ -199,7 +208,7 @@ fn run_subcommand(args : Array[String]) -> Unit {
       } else if a == "-I" || a == "-D" || a == "-U" {
         // The separated form: the flag and its value are two arguments.
         if i + 1 >= args.length() {
-          println("qpcc run: " + a + " needs a value")
+          eprint("qpcc run: " + a + " needs a value")
           @native.mbt_native_exit(1)
         }
         clang_flags.push(a + args[i + 1])
@@ -207,7 +216,7 @@ fn run_subcommand(args : Array[String]) -> Unit {
       } else if a.has_prefix("-I") || a.has_prefix("-D") || a.has_prefix("-U") {
         clang_flags.push(a)
       } else if a.has_prefix("-") {
-        println("qpcc run: unknown option " + a)
+        eprint("qpcc run: unknown option " + a)
         @native.mbt_native_exit(1)
       } else {
         input = a
@@ -219,7 +228,7 @@ fn run_subcommand(args : Array[String]) -> Unit {
   }
   if input == "" {
     usage()
-    println("qpcc run: no input file")
+    eprint("qpcc run: no input file")
     @native.mbt_native_exit(1)
   }
   let i_path = @native.tmp_path(".i")
@@ -246,7 +255,7 @@ fn run_subcommand(args : Array[String]) -> Unit {
   }
   pp = pp + shell_quote(input) + " -o " + shell_quote(i_path)
   if @native.mbt_native_run(@native.cstr(pp)) != 0 {
-    println("qpcc run: preprocessing failed")
+    eprint("qpcc run: preprocessing failed")
     @native.mbt_native_exit(1)
   }
   let prog = match front_end(i_path, input, mode, tagged_union) {
@@ -258,21 +267,21 @@ fn run_subcommand(args : Array[String]) -> Unit {
   }
   let b = @codegen.compile_program(prog) catch {
     _ => {
-      println("qpcc: codegen failed")
+      eprint("qpcc: codegen failed")
       @native.mbt_native_exit(1)
       abort("qpcc run: cannot continue")
     }
   }
   @native.write_file(o_path, emit_object(b)) catch {
     _ => {
-      println("qpcc run: cannot write the temporary object")
+      eprint("qpcc run: cannot write the temporary object")
       @native.mbt_native_exit(1)
       abort("qpcc run: cannot continue")
     }
   }
   let link = "clang " + shell_quote(o_path) + " -o " + shell_quote(exe_path)
   if @native.mbt_native_run(@native.cstr(link)) != 0 {
-    println("qpcc run: linking failed")
+    eprint("qpcc run: linking failed")
     @native.mbt_native_exit(1)
   }
   let mut cmd = shell_quote(exe_path)

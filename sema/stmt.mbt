@@ -357,6 +357,24 @@ fn check_local_decl(
               n
             }
             ctx.local_names.set(lname, true)
+            // C11 6.2.1p7: the name's scope starts at the end of its
+            // declarator, so it is visible inside its own initializer:
+            // `int x = sizeof(x);` and hiredis's
+            // `dict *ht = hi_malloc(sizeof(*ht));` are valid C. Register the
+            // symbol before checking the initializer; the real value for a
+            // constexpr is filled in below.
+            ctx.scopes.define({
+              name: n,
+              gname: if lname == n {
+                ""
+              } else {
+                lname
+              },
+              kind: SymVar,
+              ty,
+              storage,
+              value: 0L,
+            })
             match idecl.init {
               Some(@front.IExpr(e)) => {
                 let te = check_expr(e, ctx)

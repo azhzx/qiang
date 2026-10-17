@@ -107,7 +107,6 @@ pub fn is_keyword(s : String) -> Bool {
     | "__builtin_va_list"
     | "__builtin_ms_va_list"
     | "__builtin_types_compatible_p"
-    | "__builtin_constant_p"
     | "__builtin_expect"
     | "_Nullable"
     | "_Nonnull"

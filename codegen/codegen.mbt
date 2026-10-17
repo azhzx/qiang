@@ -111,6 +111,184 @@ fn promote_small(ty : @sema.CType) -> @sema.CType {
 }
 
 ///|
+// Which integer bit intrinsic is this? 0 = none, otherwise kind * 100 + bits,
+// with kind 1 bswap, 2 clz, 3 ctz, 4 popcount.
+fn bit_intrin(name : String) -> Int {
+  match name {
+    "__builtin_bswap16" => 116
+    "__builtin_bswap32" => 132
+    "__builtin_bswap64" => 164
+    "__builtin_clz" => 232
+    "__builtin_clzl" => 264
+    "__builtin_clzll" => 264
+    "__builtin_ctz" => 332
+    "__builtin_ctzl" => 364
+    "__builtin_ctzll" => 364
+    "__builtin_popcount" => 432
+    "__builtin_popcountl" => 464
+    "__builtin_popcountll" => 464
+    _ => 0
+  }
+}
+
+///|
+fn Cg::k64(c : Cg, v : Int64) -> Int {
+  c.b.iconst(c.fid, v)
+}
+
+///|
+fn Cg::bit2(
+  c : Cg,
+  op : @types.Op,
+  cls : @types.Class,
+  a : Int,
+  b : Int,
+) -> Int {
+  c.b.arith(c.fid, op, cls, a, b)
+}
+
+///|
+// SWAR population count, no branches.
+fn Cg::gen_popcount(c : Cg, cls : @types.Class, bits : Int, x : Int) -> Int {
+  let mut v = x
+  if bits == 64 {
+    v = c.bit2(
+      @types.Sub,
+      cls,
+      v,
+      c.bit2(
+        @types.And,
+        cls,
+        c.bit2(@types.Shr, cls, v, c.k64(1L)),
+        c.k64(0x5555555555555555L),
+      ),
+    )
+    v = c.bit2(
+      @types.Add,
+      cls,
+      c.bit2(@types.And, cls, v, c.k64(0x3333333333333333L)),
+      c.bit2(
+        @types.And,
+        cls,
+        c.bit2(@types.Shr, cls, v, c.k64(2L)),
+        c.k64(0x3333333333333333L),
+      ),
+    )
+    v = c.bit2(
+      @types.And,
+      cls,
+      c.bit2(@types.Add, cls, v, c.bit2(@types.Shr, cls, v, c.k64(4L))),
+      c.k64(0x0F0F0F0F0F0F0F0FL),
+    )
+    v = c.bit2(
+      @types.And,
+      cls,
+      c.bit2(@types.Add, cls, v, c.bit2(@types.Shr, cls, v, c.k64(8L))),
+      c.k64(0x00FF00FF00FF00FFL),
+    )
+    v = c.bit2(
+      @types.And,
+      cls,
+      c.bit2(@types.Add, cls, v, c.bit2(@types.Shr, cls, v, c.k64(16L))),
+      c.k64(0x0000FFFF0000FFFFL),
+    )
+    v = c.bit2(@types.Add, cls, v, c.bit2(@types.Shr, cls, v, c.k64(32L)))
+  } else {
+    v = c.bit2(
+      @types.Sub,
+      cls,
+      v,
+      c.bit2(
+        @types.And,
+        cls,
+        c.bit2(@types.Shr, cls, v, c.k64(1L)),
+        c.k64(0x55555555L),
+      ),
+    )
+    v = c.bit2(
+      @types.Add,
+      cls,
+      c.bit2(@types.And, cls, v, c.k64(0x33333333L)),
+      c.bit2(
+        @types.And,
+        cls,
+        c.bit2(@types.Shr, cls, v, c.k64(2L)),
+        c.k64(0x33333333L),
+      ),
+    )
+    v = c.bit2(
+      @types.And,
+      cls,
+      c.bit2(@types.Add, cls, v, c.bit2(@types.Shr, cls, v, c.k64(4L))),
+      c.k64(0x0F0F0F0FL),
+    )
+    v = c.bit2(
+      @types.And,
+      cls,
+      c.bit2(@types.Add, cls, v, c.bit2(@types.Shr, cls, v, c.k64(8L))),
+      c.k64(0x00FF00FFL),
+    )
+    v = c.bit2(
+      @types.And,
+      cls,
+      c.bit2(@types.Add, cls, v, c.bit2(@types.Shr, cls, v, c.k64(16L))),
+      c.k64(0x0000FFFFL),
+    )
+  }
+  v
+}
+
+///|
+// Integer bit intrinsics. QBE has no op for them, so emit the sequence: bswap
+// reverses the bytes, clz smears the bits down and subtracts its population
+// from the width, ctz counts the bits below the lowest set one.
+fn Cg::gen_bit_intrin(c : Cg, kind : Int, bits : Int, x : Int) -> Int {
+  let cls = if bits == 64 { @types.Kl } else { @types.Kw }
+  if kind == 1 {
+    let nb = bits / 8
+    let mut acc = c.k64(0L)
+    let mut i = 0
+    while i < nb {
+      let byte = c.bit2(
+        @types.And,
+        cls,
+        c.bit2(@types.Shr, cls, x, c.k64((8 * i).to_int64())),
+        c.k64(0xFFL),
+      )
+      let placed = c.bit2(
+        @types.Shl,
+        cls,
+        byte,
+        c.k64((8 * (nb - 1 - i)).to_int64()),
+      )
+      acc = c.bit2(@types.Or, cls, acc, placed)
+      i = i + 1
+    }
+    return acc
+  }
+  if kind == 4 {
+    return c.gen_popcount(cls, bits, x)
+  }
+  if kind == 2 {
+    let mut v = x
+    let mut s = 1
+    while s < bits {
+      v = c.bit2(
+        @types.Or,
+        cls,
+        v,
+        c.bit2(@types.Shr, cls, v, c.k64(s.to_int64())),
+      )
+      s = s * 2
+    }
+    let pc = c.gen_popcount(cls, bits, v)
+    return c.bit2(@types.Sub, cls, c.k64(bits.to_int64()), pc)
+  }
+  let low = c.bit2(@types.And, cls, x, c.bit2(@types.Sub, cls, c.k64(0L), x))
+  c.gen_popcount(cls, bits, c.bit2(@types.Sub, cls, low, c.k64(1L)))
+}
+
+///|
 // Is the result of an integer binary operation unsigned? C promotes each
 // operand first, so unsigned char becomes int and (int >= unsigned char) is a
 // SIGNED comparison. Asking whether either operand is unsigned made it
@@ -791,6 +969,17 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
     @sema.TBin(op, l, r) => c.gen_bin(op, l, r, e.ty)
     @sema.TUn(op, x) => c.gen_un(op, x)
     @sema.TCall(name, callee, args) => {
+      // Integer bit intrinsics: no QBE op exists, so emit the sequence.
+      let bi = bit_intrin(name)
+      if bi != 0 && args.length() >= 1 {
+        return c.gen_bit_intrin(bi / 100, bi % 100, c.gen_expr(args[0]))
+      }
+      if name == "__builtin_expect" && args.length() >= 1 {
+        return c.gen_expr(args[0])
+      }
+      if name == "__builtin_constant_p" {
+        return c.b.iconst(c.fid, 0L)
+      }
       if name == "__c11_atomic_load" ||
         name == "atomic_load" ||
         name == "__atomic_load_n" ||

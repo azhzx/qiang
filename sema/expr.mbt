@@ -308,8 +308,20 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
       )
     }
     @front.ESizeofExpr(x) => {
-      let tx = check_expr(x, ctx)
-      mk_expr(TSizeof(size_of_ty(tx.ty, ctx.layouts)), CLong(false), false)
+      // A string literal has array type in C, so sizeof("ab") is 3, not the
+      // pointer size. This sema types the literal as char*, so measure it from
+      // the literal itself.
+      let sz = match x {
+        @front.EString(parts) => {
+          let mut n = 1
+          for p in parts {
+            n = n + p.length()
+          }
+          n
+        }
+        _ => size_of_ty(check_expr(x, ctx).ty, ctx.layouts)
+      }
+      mk_expr(TSizeof(sz), CLong(false), false)
     }
     @front.ESizeofType(spec, d) => {
       let base = declspec_to_type(spec, ctx)
@@ -834,7 +846,13 @@ fn builtin_inf_call(
   ctx : Ctx,
 ) -> TExpr? {
   match callee {
-    @front.EIdent(n) =>
+    @front.EIdent(n) => {
+      // __builtin_constant_p is a constant-fold hint. Answering 0 is always
+      // correct: it means "not known to be a constant", so callers take the
+      // general path instead of the specialised one.
+      if n == "__builtin_constant_p" {
+        return Some(mk_expr(TInt(0L), CInt(true), false))
+      }
       match builtin_inf_ty(n) {
         Some(ty) =>
           if args.length() == 0 {
@@ -844,7 +862,10 @@ fn builtin_inf_call(
           }
         // Other Darwin <math.h> inlines name the libm function of the same
         // meaning; check the call as that function instead.
-        None =>
+        None => {
+          // Integer bit intrinsics: give them their real prototype; the code
+          // generator emits the sequence.
+          define_builtin(ctx, n)
           match builtin_rewrite(n) {
             Some(to) => {
               // <math.h> uses __builtin_fabs* before it declares fabs*, so the
@@ -855,7 +876,9 @@ fn builtin_inf_call(
             }
             None => None
           }
+        }
       }
+    }
     _ => None
   }
 }
@@ -882,6 +905,46 @@ fn define_libm(ctx : Ctx, to : String) -> Unit {
 }
 
 ///|
+/// Prototype for an integer bit intrinsic. The code generator emits the
+/// sequence; the prototype matters because an implicit declaration is int,
+/// which would truncate __builtin_bswap64 and __builtin_expect.
+fn bit_intrin_ty(n : String) -> CType? {
+  match n {
+    "__builtin_bswap16" => Some(CFunc(CShort(false), [CShort(false)], false))
+    "__builtin_bswap32" => Some(CFunc(CInt(false), [CInt(false)], false))
+    "__builtin_bswap64" =>
+      Some(CFunc(CLongLong(false), [CLongLong(false)], false))
+    "__builtin_clz" | "__builtin_ctz" | "__builtin_popcount" =>
+      Some(CFunc(CInt(true), [CInt(false)], false))
+    "__builtin_clzl" | "__builtin_ctzl" | "__builtin_popcountl" =>
+      Some(CFunc(CInt(true), [CLong(false)], false))
+    "__builtin_clzll" | "__builtin_ctzll" | "__builtin_popcountll" =>
+      Some(CFunc(CInt(true), [CLongLong(false)], false))
+    "__builtin_expect" =>
+      Some(CFunc(CLong(false), [CLong(false), CLong(false)], false))
+    _ => None
+  }
+}
+
+///|
+fn define_builtin(ctx : Ctx, n : String) -> Unit {
+  match bit_intrin_ty(n) {
+    Some(ty) =>
+      if ctx.scopes.lookup(n) is None {
+        ctx.scopes.define({
+          name: n,
+          gname: n,
+          kind: SymFunc,
+          ty,
+          storage: StNone,
+          value: 0L,
+        })
+      }
+    None => ()
+  }
+}
+
+///|
 /// `__builtin_x` that <math.h> uses as an inline for the libm `x`.
 fn builtin_rewrite(n : String) -> String? {
   match n {
@@ -890,6 +953,10 @@ fn builtin_rewrite(n : String) -> String? {
     "__builtin_fabsl" => Some("fabsl")
     "__builtin_sqrt" => Some("sqrt")
     "__builtin_sqrtf" => Some("sqrtf")
+    "__builtin_memcpy" => Some("memcpy")
+    "__builtin_memmove" => Some("memmove")
+    "__builtin_memset" => Some("memset")
+    "__builtin_unreachable" => Some("abort")
     _ => None
   }
 }
