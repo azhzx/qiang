@@ -1607,3 +1607,21 @@ int main(void) {
   if (s != 319600) return 1;
   return 0;
 }
+
+/* A frame that needs several instructions to adjust is not enough: the prologue
+   also has to save callee-saved registers at offsets past the 12-bit field, and
+   spilled operands reach instructions that require a register (QBE allows a
+   slot operand for mul/shr). bzip2's compress.c and zlib's zip.c did both. */
+static long helper(long x) { return x * 3 + 1; }
+
+int big_frame_spill_and_call(void) {
+  char buf[70000];
+  long acc = 0;
+  int i;
+  for (i = 0; i < 70000; i = i + 997) buf[i] = (char)i;
+  for (i = 0; i < 70000; i = i + 997) {
+    acc = helper(acc + buf[i]);
+    acc = (acc * 2654435761L) ^ (acc >> 17);
+  }
+  return (int)(acc & 0x7F);
+}
