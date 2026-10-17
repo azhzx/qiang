@@ -377,7 +377,31 @@ fn main {
     _ => abort("qpcc: codegen failed")
   }
   if emit == "asm" {
-    println(b.emit_asm() catch { _ => abort("qpcc: asm emission failed") })
+    // Surface the underlying error: abort() prints only "PanicError", which
+    // made an ICE here indistinguishable from a crash.
+    let asm = b.emit_asm() catch {
+      @util.QbeError::Ice(msg) => {
+        eprintln("qpcc: asm emission ICE: " + msg)
+        @native.mbt_native_exit(1)
+        ""
+      }
+      @util.QbeError::CompileError(msg) => {
+        eprintln("qpcc: asm emission failed: " + msg)
+        @native.mbt_native_exit(1)
+        ""
+      }
+      @util.QbeError::ParseError(_f, _l, msg) => {
+        eprintln("qpcc: asm emission failed: " + msg)
+        @native.mbt_native_exit(1)
+        ""
+      }
+      _ => {
+        eprintln("qpcc: asm emission failed")
+        @native.mbt_native_exit(1)
+        ""
+      }
+    }
+    println(asm)
     return
   }
   if emit == "qbe" {
