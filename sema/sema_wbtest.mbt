@@ -117,3 +117,29 @@ test "sema: diagnostics carry a position" {
   assert_true(r.diags.length() > 0)
   assert_true(r.diags[0].line > 0)
 }
+
+///|
+/// C99 6.7.4p6-7: an `inline` definition is an inline definition (no external
+/// definition emitted) only while *every* declaration of it in the translation
+/// unit carries `inline`. A plain prototype keeps the external definition,
+/// which is what bzip2's bzlib_private.h does for BZ2_indexIntoF while
+/// bzlib.c defines it `__inline__`.
+test "sema: inline linkage follows C99 6.7.4p6" {
+  // A plain prototype: external definition required (bzlib_private.h).
+  let plain = check(
+    @front.parse("__inline__ int g(int x) { return x * 2; }\nint g(int);"),
+  )
+  assert_eq(plain.diags.length(), 0)
+  assert_true(plain.funcs[0].is_export)
+  // Every declaration inline: an inline definition, so no external definition.
+  // Emitting one used to duplicate Darwin <math.h> helpers across objects.
+  let inl = check(
+    @front.parse("inline int h(int x) { return x; }\ninline int h(int x);"),
+  )
+  assert_eq(inl.diags.length(), 0)
+  assert_true(!inl.funcs[0].is_export)
+  // static inline is internal regardless.
+  let st = check(@front.parse("static inline int s(int x) { return x; }"))
+  assert_eq(st.diags.length(), 0)
+  assert_true(!st.funcs[0].is_export)
+}

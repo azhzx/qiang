@@ -161,6 +161,7 @@ pub struct Ctx {
   mut labels : Map[String, Bool]
   mut gotos : Array[String]
   mut static_counter : Int
+  noninline_funcs : Map[String, Bool]
 }
 
 pub struct Diag {

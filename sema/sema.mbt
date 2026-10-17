@@ -29,6 +29,11 @@ pub struct Ctx {
   mut labels : Map[String, Bool]
   mut gotos : Array[String]
   mut static_counter : Int
+  // C99 6.7.4p6: an `inline` definition is an inline definition (no external
+  // definition) only when every declaration of it in the translation unit
+  // carries `inline`. Names declared by a plain prototype are collected up
+  // front, because the definition may come before or after the declaration.
+  noninline_funcs : Map[String, Bool]
 }
 
 ///|
@@ -541,13 +546,19 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
         params: ctx.cur_params,
         locals: ctx.cur_locals,
         is_vararg,
-        // C99 6.7.4p6: an inline definition that no declaration in the
-        // translation unit pairs with extern provides no external definition.
-        // Emitting a strong global instead made the same function arrive from
-        // every object that includes the header - Darwin's <math.h> helpers do
-        // exactly that, and Lua's link then failed with 20 duplicate symbols.
+        // C99 6.7.4p6-7: an `inline` definition is an inline definition (with no
+        // external definition) only when *every* declaration of it in the
+        // translation unit carries `inline`. A plain prototype keeps the external
+        // definition, which is how bzip2 declares BZ2_indexIntoF in
+        // bzlib_private.h and defines it `__inline__` in bzlib.c.
+        // Emitting an external definition for a genuine inline definition made
+        // the same function arrive from every object that includes the header -
+        // Darwin's <math.h> helpers do exactly that, and Lua's link then failed
+        // with 20 duplicate symbols.
         is_export: !(storage_of(spec) is StStatic) &&
-        !(is_inline_def(spec) && !(storage_of(spec) is StExtern)),
+        !(is_inline_def(spec) &&
+        !(storage_of(spec) is StExtern) &&
+        !ctx.noninline_funcs.contains(name)),
         body: tb,
         closure: None,
       })
@@ -572,10 +583,36 @@ fn is_inline_def(spec : @front.DeclSpec) -> Bool {
 }
 
 ///|
+/// Record every name a plain (no `inline`, no `static`) declaration introduces.
+/// C99 6.7.4p6 makes an `inline` definition an external definition as soon as
+/// one such declaration exists in the translation unit.
+fn collect_noninline_func_decls(
+  d : @front.ExternalDecl,
+  out : Map[String, Bool],
+) -> Unit {
+  match d.kind {
+    @front.EDecl(spec, decls) =>
+      if !is_inline_def(spec) && !(storage_of(spec) is StStatic) {
+        for idecl in decls {
+          match decl_name(idecl.decl) {
+            Some(n) => out.set(n, true)
+            None => ()
+          }
+        }
+      }
+    _ => ()
+  }
+}
+
+///|
 pub fn check(
   tu : @front.TranslationUnit,
   mode? : @front.StdMode = @front.Cqe,
 ) -> CheckedProgram {
+  let noninline_funcs : Map[String, Bool] = Map::new()
+  for d in tu.decls {
+    collect_noninline_func_decls(d, noninline_funcs)
+  }
   let ctx = Ctx::{
     scopes: ScopeStack::new(),
     mode,
@@ -598,6 +635,7 @@ pub fn check(
     labels: Map::new(),
     gotos: [],
     static_counter: 0,
+    noninline_funcs,
   }
   for n in ["__uint128_t", "__int128_t"] {
     ctx.scopes.define({
