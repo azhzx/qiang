@@ -872,6 +872,7 @@ fn builtin_inf_call(
               // rewrite has to supply the prototype: an implicitly declared
               // function returns int and the double would be truncated.
               define_libm(ctx, to)
+              define_nan(ctx, to)
               Some(check_call(@front.EIdent(to), args, ctx))
             }
             None => None
@@ -957,7 +958,34 @@ fn builtin_rewrite(n : String) -> String? {
     "__builtin_memmove" => Some("memmove")
     "__builtin_memset" => Some("memset")
     "__builtin_unreachable" => Some("abort")
+    // Darwin's <math.h> builds isfinite/isnan out of __builtin_nanf(""), which
+    // would otherwise stay a call to a symbol that does not exist and break
+    // the link (cJSON hit this).
+    "__builtin_nan" => Some("nan")
+    "__builtin_nanf" => Some("nanf")
+    "__builtin_nanl" => Some("nanl")
     _ => None
+  }
+}
+
+///|
+// nan/nanf/nanl take the NaN payload as a string, so they need their own
+// prototypes rather than define_libm's double-argument shape.
+fn define_nan(ctx : Ctx, to : String) -> Unit {
+  if ctx.scopes.lookup(to) is None {
+    let (ret, param) = match to {
+      "nanf" => (CFloat, CPtr(CChar(true)))
+      "nanl" => (CLongDouble, CPtr(CChar(true)))
+      _ => (CDouble, CPtr(CChar(true)))
+    }
+    ctx.scopes.define({
+      name: to,
+      gname: to,
+      kind: SymFunc,
+      ty: CFunc(ret, [param], false),
+      storage: StNone,
+      value: 0L,
+    })
   }
 }
 
