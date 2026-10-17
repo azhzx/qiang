@@ -82,7 +82,7 @@ pub fn collect_locals(s : TStmt, out : Array[(String, CType, Int)]) -> Unit {
       }
       collect_locals(b, out)
     }
-    KSSwitch(e, cases, d, _) => {
+    KSSwitch(e, cases, d, _, _) => {
       collect_expr_locals(e, out)
       for c in cases {
         collect_locals(c.1, out)
@@ -675,7 +675,7 @@ fn sw_collect_one(
     KSDoWhile(b, _) => sw_collect_one(b, cases, dflt, dfpos)
     KSFor(_, _, _, b) => sw_collect_one(b, cases, dflt, dfpos)
     KSLabel(_, b) => sw_collect_one(b, cases, dflt, dfpos)
-    KSSwitch(_, _, _, _) => ()
+    KSSwitch(_, _, _, _, _) => ()
     _ => ()
   }
 }
@@ -780,7 +780,7 @@ fn check_switch(ctrl : @front.Expr, body : @front.Stmt, ctx : Ctx) -> TStmt {
   sw_collect(stmts, cases, dflt, dfpos)
   let _ = ctx.break_labels.pop()
   ctx.switch_depth = ctx.switch_depth - 1
-  { kind: KSSwitch(tc, cases, dflt[0], dfpos[0]), }
+  { kind: KSSwitch(tc, cases, dflt[0], dfpos[0], { kind: KSBlock(stmts), }), }
 }
 
 ///|

@@ -29,6 +29,12 @@ priv struct Cg {
   break_depths : Array[Int]
   cont_depths : Array[Int]
   label_depths : Map[String, Int]
+  // One frame per `switch` while its body is generated: the block each case
+  // label landed in, and the block the default label landed in (the switch end
+  // when there is none). The tests are emitted after the body, so they can
+  // point at the blocks the labels actually chose.
+  switch_cases : Array[Array[(Int64, Int)]]
+  switch_dflt : Array[Int]
 }
 
 ///|
@@ -1801,15 +1807,7 @@ fn collect_labels(s : @sema.TStmt, out : Array[String]) -> Unit {
       }
       collect_labels(b, out)
     }
-    @sema.KSSwitch(_, cases, d, _) => {
-      for c in cases {
-        collect_labels(c.1, out)
-      }
-      match d {
-        Some(x) => collect_labels(x, out)
-        None => ()
-      }
-    }
+    @sema.KSSwitch(_, _, _, _, body) => collect_labels(body, out)
     @sema.KSDefer(b) => collect_labels(b, out)
     _ => ()
   }
@@ -1822,29 +1820,43 @@ fn Cg::gen_switch(
   cases : Array[(Int64, @sema.TStmt)],
   dflt : @sema.TStmt?,
   dfpos : Int,
+  body : @sema.TStmt,
 ) -> Unit {
+  let _ = dfpos
+  let _ = dflt
   let end = c.new_block("switch.end")
   let v = c.gen_expr(e)
   let cls = cls_of(e.ty)
   let n = cases.length()
-  let blocks : Array[Int] = []
-  for _i in 0..<n {
-    blocks.push(c.new_block("switch.case"))
-  }
-  let dblk = match dflt {
-    Some(_) => c.new_block("switch.default")
-    None => end
-  }
   let tests : Array[Int] = []
   for _i in 0..<n {
     tests.push(c.new_block("switch.test"))
   }
-  if n == 0 {
-    c.b.jmp(c.fid, dblk, [])
-  } else {
+  c.break_depths.push(c.defer_frames.length())
+  c.break_blks.push(end)
+  c.switch_cases.push([])
+  c.switch_dflt.push(end)
+  if n > 0 {
     c.b.jmp(c.fid, tests[0], [])
+    c.open = false
+  }
+  // Emit the body exactly once, in source order. Every case label registers
+  // the block it lands in, so a label nested inside a loop keeps the enclosing
+  // loop after the body instead of jumping into a detached copy of itself.
+  c.gen_stmt(body)
+  // Falling out of the body (the last case has no break) leaves the switch.
+  if c.open {
+    c.b.jmp(c.fid, end, [])
   }
   c.open = false
+  let reg : Array[(Int64, Int)] = match c.switch_cases.pop() {
+    Some(x) => x
+    None => []
+  }
+  let dblk : Int = match c.switch_dflt.pop() {
+    Some(x) => x
+    None => end
+  }
   for i in 0..<n {
     c.switch(tests[i])
     let cv = c.b.iconst(c.fid, cases[i].0)
@@ -1859,41 +1871,15 @@ fn Cg::gen_switch(
       v,
       cv,
     )
+    let mut target = dblk
+    for pair in reg {
+      if pair.0 == cases[i].0 {
+        target = pair.1
+      }
+    }
     let next = if i + 1 < n { tests[i + 1] } else { dblk }
-    c.b.jnz(c.fid, cc, blocks[i], [], next, [])
+    c.b.jnz(c.fid, cc, target, [], next, [])
     c.open = false
-  }
-  c.break_depths.push(c.defer_frames.length())
-  c.break_blks.push(end)
-  for i in 0..<n {
-    c.switch(blocks[i])
-    c.gen_stmt(cases[i].1)
-    if c.open {
-      // A case falls into the next label in source order, and the default
-      // is one of those labels: `case 'h': default: ...` shares one body,
-      // so the fall-through has to be able to reach it.
-      let next = if dfpos == i + 1 {
-        dblk
-      } else if i + 1 < n {
-        blocks[i + 1]
-      } else {
-        end
-      }
-      c.b.jmp(c.fid, next, [])
-      c.open = false
-    }
-  }
-  match dflt {
-    Some(b) => {
-      c.switch(dblk)
-      c.gen_stmt(b)
-      if c.open {
-        let next = if dfpos < n { blocks[dfpos] } else { end }
-        c.b.jmp(c.fid, next, [])
-        c.open = false
-      }
-    }
-    None => ()
   }
   let _ = c.break_depths.pop()
   let _ = c.break_blks.pop()
@@ -1981,15 +1967,7 @@ fn collect_label_depths(
       }
       collect_label_depths(b, depth, out)
     }
-    @sema.KSSwitch(_, cases, d, _) => {
-      for c in cases {
-        collect_label_depths(c.1, depth, out)
-      }
-      match d {
-        Some(x) => collect_label_depths(x, depth, out)
-        None => ()
-      }
-    }
+    @sema.KSSwitch(_, _, _, _, body) => collect_label_depths(body, depth, out)
     @sema.KSDefer(b) => collect_label_depths(b, depth, out)
     _ => ()
   }
@@ -2271,13 +2249,42 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
       }
       c.switch(end)
     }
-    @sema.KSCaseMark(_, _, b) => c.gen_stmt(b)
+    @sema.KSCaseMark(vals, is_def, b) => {
+      // A label is a jump target, so it always starts a block; control that
+      // reaches it from the preceding statement falls through with a jump. The
+      // block is created right here, inside whatever loop or condition encloses
+      // the label, so the code after it keeps that enclosing structure instead
+      // of ending up as a detached copy.
+      let nb = c.new_block(
+        if is_def {
+          "switch.default"
+        } else {
+          "switch.case"
+        },
+      )
+      if c.open {
+        c.b.jmp(c.fid, nb, [])
+        c.open = false
+      }
+      c.switch(nb)
+      if is_def {
+        if c.switch_dflt.length() > 0 {
+          c.switch_dflt[c.switch_dflt.length() - 1] = nb
+        }
+      } else if c.switch_cases.length() > 0 {
+        let reg = c.switch_cases[c.switch_cases.length() - 1]
+        for v in vals {
+          reg.push((v, nb))
+        }
+      }
+      c.gen_stmt(b)
+    }
     @sema.KSLabel(n, b) => {
       let loopish = match b.kind {
         @sema.KSFor(_, _, _, _)
         | @sema.KSWhile(_, _)
         | @sema.KSDoWhile(_, _)
-        | @sema.KSSwitch(_, _, _, _) => true
+        | @sema.KSSwitch(_, _, _, _, _) => true
         _ => false
       }
       // A label that names a loop or switch (C2y N3355) needs its jump target
@@ -2303,7 +2310,8 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
         c.gen_stmt(b)
       }
     }
-    @sema.KSSwitch(e, cases, dflt, dfpos) => c.gen_switch(e, cases, dflt, dfpos)
+    @sema.KSSwitch(e, cases, dflt, dfpos, body) =>
+      c.gen_switch(e, cases, dflt, dfpos, body)
     @sema.KSEmpty => ()
   }
 }
@@ -2622,6 +2630,8 @@ pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
     break_depths: [],
     cont_depths: [],
     label_depths: Map::new(),
+    switch_cases: [],
+    switch_dflt: [],
   }
   for f in p.funcs {
     c.gen_func(f)

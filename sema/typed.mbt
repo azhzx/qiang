@@ -64,10 +64,11 @@ pub(all) enum TStmtKind {
   // The Int is how many cases precede the default label in the source. C
   // lets a case fall through into the default, so the generated fall-through
   // chain has to put the default back at its source position.
-  KSSwitch(TExpr, Array[(Int64, TStmt)], TStmt?, Int)
-  // A case (or default) label still attached to its statement. The label runs
-  // nothing, so code generation just emits `body`; it exists so a switch can
-  // find cases nested anywhere in its body, which is what a Duff's device needs.
+  KSSwitch(TExpr, Array[(Int64, TStmt)], TStmt?, Int, TStmt)
+  // A case (or default) label still attached to its statement. Code generation
+  // emits `body` in place and remembers the block the label landed in, so the
+  // switch tests can point at it; that keeps a label nested in a loop attached
+  // to the enclosing loop, which is what a Duff's device needs.
   KSCaseMark(Array[Int64], Bool, TStmt)
   KSDecl(String, CType, TExpr?, Int)
   KSAggInit(String, CType, Array[(Int, TExpr, Int, Int)], Int)
