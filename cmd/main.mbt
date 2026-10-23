@@ -237,7 +237,11 @@ fn run_subcommand(args : Array[String]) -> Unit {
   // clang has no -std=cqe, so the preprocessing step uses the C2y spelling;
   // only QPCC needs to know that the QPCC extensions are on.
   let clang_std = if std_flag == "-std=cqe" { "-std=c2y" } else { std_flag }
-  let mut pp = "clang -E -P "
+  // QPCC does not implement Blocks, so preprocess the way a compiler without
+  // them would: Apple's headers guard every block declaration with
+  // `__BLOCKS__`, and clang defines it. Leaving it defined made the front end
+  // parse `(^)(...)` declarations from <sys/dirent.h> and fail.
+  let mut pp = "clang -E -P -U__BLOCKS__ "
   if clang_std != "" {
     pp = pp + clang_std + " "
   }

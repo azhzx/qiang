@@ -588,10 +588,17 @@ fn Parser::parse_declspec(self : Parser) -> DeclSpec {
           type_specs.push(TTaggedUnion(tag, body))
         } else if k == "enum" {
           self.pos = self.pos + 1
+          // Clang-style attributes may sit between "enum", the tag and the
+          // C23 fixed underlying type, as in macOS <mach/mach_types.h>:
+          //   typedef enum __attribute__((__flag_enum__)) : uint64_t { ... }
+          self.skip_attrs()
           let tag = self.eat_ident()
+          self.skip_attrs()
           // C23 fixed underlying type: enum E : TYPE { ... }
           let underlying = if self.eat_punct(":") {
-            Some(self.parse_declspec())
+            let u = self.parse_declspec()
+            self.skip_attrs()
+            Some(u)
           } else {
             None
           }
