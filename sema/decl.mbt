@@ -164,10 +164,10 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
           "__auto_type" => ()
           _ => ()
         }
-      @front.TStruct(tag, body) =>
-        base = Some(CStruct(resolve_aggregate(ctx, tag, body, false)))
-      @front.TUnion(tag, body) =>
-        base = Some(CUnion(resolve_aggregate(ctx, tag, body, true)))
+      @front.TStruct(tag, body, pack) =>
+        base = Some(CStruct(resolve_aggregate(ctx, tag, body, false, pack)))
+      @front.TUnion(tag, body, pack) =>
+        base = Some(CUnion(resolve_aggregate(ctx, tag, body, true, pack)))
       @front.TTaggedUnion(tag, body) =>
         base = Some(resolve_tagged_union(ctx, tag, body))
       @front.TEnum(tag, items, underlying) => {
@@ -252,11 +252,24 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
 ///|
 /// Resolve a struct/union type: reuse an existing tag when there is no body,
 /// otherwise define a new layout.
+
+///|
+/// The alignment a member may actually use under `#pragma pack(N)` (0 = natural).
+fn pack_align(a : Int, pack : Int) -> Int {
+  if pack > 0 && a > pack {
+    pack
+  } else {
+    a
+  }
+}
+
+///|
 fn resolve_aggregate(
   ctx : Ctx,
   tag : String?,
   body : Array[@front.StructDecl],
   is_union : Bool,
+  pack : Int,
 ) -> Int {
   if body.length() == 0 {
     match tag {
@@ -268,7 +281,7 @@ fn resolve_aggregate(
       None => ()
     }
   }
-  define_aggregate(ctx, tag, body, is_union)
+  define_aggregate(ctx, tag, body, is_union, pack)
 }
 
 ///|
@@ -387,6 +400,7 @@ fn define_aggregate(
   tag : String?,
   body : Array[@front.StructDecl],
   is_union : Bool,
+  pack : Int,
 ) -> Int {
   let fields : Array[Field] = []
   let mut off = 0
@@ -404,7 +418,9 @@ fn define_aggregate(
             Some(n) => n
             None => ""
           }
-          let a = align_of_ty(ty, ctx.layouts)
+          // `#pragma pack(N)` lowers every member alignment to at most N, and
+          // with it the alignment of the whole aggregate.
+          let a = pack_align(align_of_ty(ty, ctx.layouts), pack)
           let sz = size_of_ty(ty, ctx.layouts)
           if a > maxa {
             maxa = a
@@ -451,13 +467,14 @@ fn define_aggregate(
         match ty {
           CStruct(i) | CUnion(i) => {
             let lay = ctx.layouts[i]
-            if lay.align > maxa {
-              maxa = lay.align
+            let la = pack_align(lay.align, pack)
+            if la > maxa {
+              maxa = la
             }
             if lay.size > maxsz {
               maxsz = lay.size
             }
-            let base_off = if is_union { 0 } else { align_up(off, lay.align) }
+            let base_off = if is_union { 0 } else { align_up(off, la) }
             for f in lay.fields {
               fields.push({
                 name: f.name,
@@ -472,7 +489,7 @@ fn define_aggregate(
             }
           }
           _ => {
-            let a = align_of_ty(ty, ctx.layouts)
+            let a = pack_align(align_of_ty(ty, ctx.layouts), pack)
             let sz = size_of_ty(ty, ctx.layouts)
             if a > maxa {
               maxa = a

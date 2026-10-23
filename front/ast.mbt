@@ -35,8 +35,10 @@ pub struct DeclSpec {
 ///|
 pub(all) enum TypeSpec {
   TKw(String)
-  TStruct(String?, Array[StructDecl])
-  TUnion(String?, Array[StructDecl])
+  // The Int is the active `#pragma pack` value (0 = natural alignment) at the
+  // point the specifier was written; see Parser::try_pragma.
+  TStruct(String?, Array[StructDecl], Int)
+  TUnion(String?, Array[StructDecl], Int)
   // QPCC -f_tagged_union: _Tagged_union Tag { members }. The tag is a
   // synthetic int at offset 0, the members overlap after it.
   TTaggedUnion(String?, Array[StructDecl])

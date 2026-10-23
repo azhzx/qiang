@@ -236,8 +236,8 @@ pub struct TranslationUnit {
 
 pub(all) enum TypeSpec {
   TKw(String)
-  TStruct(String?, Array[StructDecl])
-  TUnion(String?, Array[StructDecl])
+  TStruct(String?, Array[StructDecl], Int)
+  TUnion(String?, Array[StructDecl], Int)
   TTaggedUnion(String?, Array[StructDecl])
   TEnum(String?, Array[EnumItem], DeclSpec?)
   TTypedefName(String)

@@ -31,7 +31,13 @@ fn usage() -> Unit {
 fn strip_directives(src : String) -> String {
   let sb = StringBuilder::new()
   for line in src.split("\n") {
-    if line.has_prefix("#") {
+    // QPCC has no preprocessor: #pragma pack changes the layout of the
+    // structs after it, so the line is kept for the parser. Every other
+    // directive is still blanked, which keeps diagnostic line numbers.
+    if line.has_prefix("#pragma") {
+      sb.write_string(line.to_string())
+      sb.write_string("\n")
+    } else if line.has_prefix("#") {
       sb.write_string("\n")
     } else {
       sb.write_string(line.to_string())

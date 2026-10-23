@@ -46,6 +46,15 @@ void _exit(int);
 int fsync(int);
 int ftruncate(int, off_t);
 
+// sysconf() names; the values are the Darwin ones (the bundled headers
+// shadow the system <unistd.h>, so callers would otherwise see these as
+// undeclared identifiers - sqlite3.c uses _SC_PAGESIZE).
+#define _SC_ARG_MAX 1
+#define _SC_OPEN_MAX 5
+#define _SC_PAGESIZE 29
+#define _SC_NPROCESSORS_ONLN 58
+#define _SC_PHYS_PAGES 200
+
 // BSD and macOS declare the getopt globals in <unistd.h>; lchat.c relies on
 // that and never includes <getopt.h>, so without these it sees `optarg` as
 // an undeclared identifier.

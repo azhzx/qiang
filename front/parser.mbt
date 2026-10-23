@@ -15,6 +15,11 @@ priv struct Parser {
   template_defs : Map[String, Bool]
   mode : StdMode
   tagged_union : Bool
+  // `#pragma pack` state. QPCC has no preprocessor, so directives that survive
+  // clang -E arrive as tokens; the parser applies the ones that affect layout
+  // and stamps the active value onto every struct/union it parses.
+  mut pack : Int
+  pack_stack : Array[Int]
 }
 
 ///|
@@ -336,7 +341,9 @@ fn Parser::parse_attribute(self : Parser) -> String {
 fn Parser::skip_attrs(self : Parser) -> Unit {
   let mut go = true
   while go {
-    if self.at_c23_attr() {
+    if self.try_pragma() {
+      ()
+    } else if self.at_c23_attr() {
       let _ = self.parse_c23_attrs()
     } else if self.at_kw("__attribute__") || self.at_kw("__attribute") {
       let _ = self.parse_attribute()
@@ -352,6 +359,87 @@ fn Parser::skip_attrs(self : Parser) -> Unit {
       go = false
     }
   }
+}
+
+///|
+/// Is this token text a plain decimal number? (#pragma pack takes one.)
+fn is_digits(s : String) -> Bool {
+  let a = s.to_array()
+  if a.length() == 0 {
+    return false
+  }
+  for c in a {
+    if c < '0' || c > '9' {
+      return false
+    }
+  }
+  true
+}
+
+///|
+fn digits_value(s : String) -> Int {
+  let mut v = 0
+  for c in s.to_array() {
+    v = v * 10 + (c.to_int() - 48)
+  }
+  v
+}
+
+///|
+/// Consume one `#`-directive line and apply `#pragma pack(...)`.
+///
+/// Without a preprocessor the directive reaches the parser as ordinary tokens
+/// (`Punct("#")`, `Ident("pragma")`, ...) all on one source line, so the whole line
+/// is taken here. Only `pack` changes anything; every other pragma is ignored, which
+/// is what a compiler that does not implement it should do.
+fn Parser::try_pragma(self : Parser) -> Bool {
+  if !self.at_punct("#") {
+    return false
+  }
+  let line = self.peek().line
+  let words : Array[String] = []
+  while !(self.peek().kind is Eof) && self.peek().line == line {
+    match self.peek().kind {
+      Ident(s) | Keyword(s) | IntLit(s) | Punct(s) => words.push(s)
+      _ => words.push("")
+    }
+    self.pos = self.pos + 1
+  }
+  if words.length() < 3 || words[1] != "pragma" || words[2] != "pack" {
+    return true
+  }
+  let mut saw = false
+  let mut pushed = false
+  for k in 3..<words.length() {
+    match words[k] {
+      "push" => {
+        pushed = true
+        saw = true
+      }
+      "pop" => {
+        saw = true
+        if self.pack_stack.length() > 0 {
+          self.pack = self.pack_stack[self.pack_stack.length() - 1]
+          let _ = self.pack_stack.pop()
+        }
+      }
+      "(" | ")" | "," => ()
+      n =>
+        if is_digits(n) {
+          saw = true
+          if pushed {
+            self.pack_stack.push(self.pack)
+            pushed = false
+          }
+          self.pack = digits_value(n)
+        }
+    }
+  }
+  // `#pragma pack()` restores natural alignment.
+  if !saw {
+    self.pack = 0
+  }
+  true
 }
 
 ///|
@@ -541,7 +629,7 @@ fn Parser::parse_declspec(self : Parser) -> DeclSpec {
           } else {
             []
           }
-          type_specs.push(TStruct(tag, body))
+          type_specs.push(TStruct(tag, body, self.pack))
         } else if k == "union" {
           self.pos = self.pos + 1
           let mut tag = self.eat_ident()
@@ -555,7 +643,7 @@ fn Parser::parse_declspec(self : Parser) -> DeclSpec {
           } else {
             []
           }
-          type_specs.push(TUnion(tag, body))
+          type_specs.push(TUnion(tag, body, self.pack))
         } else if k == "_Lambda" {
           // _Lambda T (params) -- the written closure type.
           self.pos = self.pos + 1
@@ -1009,6 +1097,11 @@ fn Parser::parse_compound(self : Parser) -> StmtKind {
   while !self.eat_punct("}") {
     if self.peek().kind is Eof {
       self.fail("unexpected end of file in block")
+    }
+    // #pragma may sit between statements (clang diagnostic push/pop and
+    // #pragma pack both do); consume the directive line and move on.
+    if self.try_pragma() {
+      continue
     }
     if self.at_c23_attr() {
       let _ = self.parse_c23_attrs()
@@ -1812,6 +1905,8 @@ pub fn parse(
     template_defs: Map::new(),
     mode,
     tagged_union: tagged,
+    pack: 0,
+    pack_stack: [],
   }
   let decls : Array[ExternalDecl] = []
   while !(p.peek().kind is Eof) {
