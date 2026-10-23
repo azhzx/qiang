@@ -175,6 +175,14 @@ fn complete_array(ty : CType, init : @front.Initializer, ctx : Ctx) -> CType {
       }
       CArray(elem, n)
     }
+    // char s[] = "abc"; the bound is the literal length including the NUL.
+    (CArray(elem, 0), @front.IExpr(@front.EString(parts))) => {
+      let mut n = 1
+      for p in parts {
+        n = n + p.length()
+      }
+      CArray(elem, n)
+    }
     _ => ty
   }
 }

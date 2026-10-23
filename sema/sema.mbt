@@ -342,6 +342,21 @@ pub fn const_eval_int(e : @front.Expr, ctx : Ctx) -> Int64 {
       let b = declspec_to_type(spec, ctx)
       size_of_ty(build_type(d, b, ctx), ctx.layouts).to_int64()
     }
+    // sizeof(expr) has to be evaluated here as well: this evaluator runs on
+    // the front-end tree for file-scope initializers, where a missing arm
+    // silently produced 0. That made "static const unsigned n = sizeof(arr);"
+    // store zero (and sizeof(arr) / sizeof(arr[0]) divide by zero).
+    @front.ESizeofExpr(x) =>
+      match x {
+        @front.EString(parts) => {
+          let mut n = 1
+          for p in parts {
+            n = n + p.length()
+          }
+          n.to_int64()
+        }
+        _ => size_of_ty(check_expr(x, ctx).ty, ctx.layouts).to_int64()
+      }
     @front.EAlignofType(spec, d) => {
       let b = declspec_to_type(spec, ctx)
       align_of_ty(build_type(d, b, ctx), ctx.layouts).to_int64()
@@ -362,7 +377,14 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
       let is_td = has_storage(spec, "typedef")
       for idecl in decls {
         let b = if auto_ty { infer_auto_type(decls, idecl, ctx) } else { base }
-        let ty = build_type(idecl.decl, b, ctx)
+        let mut ty = build_type(idecl.decl, b, ctx)
+        // A file-scope array with an unspecified bound takes it from the
+        // initializer, exactly like the block-scope case in check_local_decl.
+        // Without this sizeof(arr) stayed 0 for every initialised array.
+        match idecl.init {
+          Some(init) => ty = complete_array(ty, init, ctx)
+          None => ()
+        }
         match decl_name(idecl.decl) {
           Some(n) =>
             if is_td {

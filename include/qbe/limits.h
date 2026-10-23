@@ -24,4 +24,9 @@
 #define SSIZE_MIN (-LONG_MAX-1)
 #define WORD_BIT 64
 
+// BSD and macOS get these from <sys/syslimits.h>, which the system
+// <limits.h> pulls in. lchat.c uses PATH_MAX and includes neither.
+#define PATH_MAX 1024
+#define NAME_MAX 255
+
 #endif /* __QPCC_QBE_LIMITS_H */

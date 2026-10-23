@@ -46,4 +46,13 @@ void _exit(int);
 int fsync(int);
 int ftruncate(int, off_t);
 
+// BSD and macOS declare the getopt globals in <unistd.h>; lchat.c relies on
+// that and never includes <getopt.h>, so without these it sees `optarg` as
+// an undeclared identifier.
+extern char *optarg;
+extern int optind;
+extern int opterr;
+extern int optopt;
+int getopt(int, char **, char *);
+
 #endif /* __QPCC_QBE_UNISTD_H */
