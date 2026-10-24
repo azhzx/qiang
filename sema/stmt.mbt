@@ -397,6 +397,17 @@ fn check_local_decl(
                     }
                   _ => ()
                 }
+                if ctx.strict {
+                  match weak_conv(te.ty, ty) {
+                    Some(why) =>
+                      ctx.diags.error(
+                        "implicit conversion in initialisation (" +
+                        why +
+                        "); add a cast",
+                      )
+                    None => ()
+                  }
+                }
                 out.push({ kind: KSDecl(lname, ty, Some(te), al), })
               }
               Some(@front.IList(_)) => {
@@ -465,6 +476,15 @@ fn check_init_into(
   match init {
     @front.IExpr(e) => {
       let te = check_expr(e, ctx)
+      if ctx.strict {
+        match weak_conv(te.ty, ty) {
+          Some(why) =>
+            ctx.diags.error(
+              "implicit conversion in initialisation (" + why + "); add a cast",
+            )
+          None => ()
+        }
+      }
       // The element may need narrowing (e.g. the bytes of a char array
       // compound literal); store it already converted so the element size is
       // used when writing.
@@ -801,6 +821,19 @@ fn check_return(e : @front.Expr?, ctx : Ctx) -> TStmt {
     Some(CVoid) => true
     None => true
     _ => false
+  }
+  match (ctx.ret_ty, te) {
+    (Some(rt), Some(e)) =>
+      if ctx.strict {
+        match weak_conv(e.ty, rt) {
+          Some(why) =>
+            ctx.diags.error(
+              "implicit conversion in return (" + why + "); add a cast",
+            )
+          None => ()
+        }
+      }
+    _ => ()
   }
   match (ctx.ret_ty, te) {
     (Some(CVoid), Some(_)) =>

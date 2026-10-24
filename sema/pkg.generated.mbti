@@ -12,7 +12,7 @@ pub fn align_up(Int, Int) -> Int
 
 pub fn build_type(@front.Declarator, CType, Ctx) -> CType
 
-pub fn check(@front.TranslationUnit, mode? : @front.StdMode) -> CheckedProgram
+pub fn check(@front.TranslationUnit, mode? : @front.StdMode, strict? : Bool) -> CheckedProgram
 
 pub fn check_block_items(Array[@front.BlockItem], Ctx) -> Array[TStmt]
 
@@ -71,6 +71,8 @@ pub fn parse_int_lit(String) -> Int64
 pub fn size_of_ty(CType, Array[Layout]) -> Int
 
 pub fn ty_eq(CType, CType) -> Bool
+
+pub fn weak_conv(CType, CType) -> String?
 
 // Errors
 
@@ -142,6 +144,7 @@ pub struct ClosureInfo {
 pub struct Ctx {
   scopes : ScopeStack
   mode : @front.StdMode
+  strict : Bool
   layouts : Array[Layout]
   diags : Diags
   mut ret_ty : CType?

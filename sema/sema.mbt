@@ -5,6 +5,8 @@ pub struct Ctx {
   // The language mode. Only the QPCC-only relaxations consult it: the lexer
   // has already decided which words are keywords.
   mode : @front.StdMode
+  // --strict: reject the conversions C performs silently.
+  strict : Bool
   layouts : Array[Layout]
   diags : Diags
   mut ret_ty : CType?
@@ -630,6 +632,7 @@ fn collect_noninline_func_decls(
 pub fn check(
   tu : @front.TranslationUnit,
   mode? : @front.StdMode = @front.Cqe,
+  strict? : Bool = false,
 ) -> CheckedProgram {
   let noninline_funcs : Map[String, Bool] = Map::new()
   for d in tu.decls {
@@ -638,6 +641,7 @@ pub fn check(
   let ctx = Ctx::{
     scopes: ScopeStack::new(),
     mode,
+    strict,
     layouts: [],
     diags: Diags::new(),
     ret_ty: None,

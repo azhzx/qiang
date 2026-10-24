@@ -209,6 +209,15 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
           "cannot assign to a _Tagged_union member; assign a whole value",
         )
       }
+      if op == "=" && ctx.strict {
+        match weak_conv(tr.ty, tl.ty) {
+          Some(why) =>
+            ctx.diags.error(
+              "implicit conversion in assignment (" + why + "); add a cast",
+            )
+          None => ()
+        }
+      }
       let combined = if op == "=" {
         tr
       } else {

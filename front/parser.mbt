@@ -445,6 +445,72 @@ fn Parser::try_pragma(self : Parser) -> Bool {
 }
 
 ///|
+// QPCC extension: a trailing comma is accepted before the closing delimiter of
+// a comma separated list. Plain C only allows it in initialiser lists and enum
+// bodies; qpcc also accepts it in call arguments, parameter lists, _Generic
+// associations and attribute arguments.
+fn Parser::at_list_close(self : Parser) -> Bool {
+  match self.peek().kind {
+    Punct(")") | Punct("}") | Punct("]") => true
+    _ => false
+  }
+}
+
+///|
+// Consume the closing delimiter after a trailing comma; the caller then just
+// breaks out of its loop (every other path consumes the delimiter itself).
+fn Parser::eat_list_close(self : Parser) -> Bool {
+  if self.at_list_close() {
+    self.pos = self.pos + 1
+    true
+  } else {
+    false
+  }
+}
+
+///|
+// QPCC extension (N3458, "Clearer C/C++ Headers Boilerplate with extern
+// Blocks"): extern "C" { ... } groups declarations that have C language
+// linkage, and extern {} with no string is the same thing. qpcc has a single
+// language, so a block is only a grouping: it is parsed and flattened into the
+// surrounding declarations. extern "C++" is accepted and treated like extern
+// "C" - there is no second language to switch to.
+fn Parser::at_linkage_block(self : Parser) -> Bool {
+  if !self.at_kw("extern") {
+    return false
+  }
+  match self.peek_n(1).kind {
+    StringLit(_) => self.peek_n(2).kind is Punct("{")
+    Punct("{") => true
+    _ => false
+  }
+}
+
+///|
+fn Parser::parse_external_decls(
+  self : Parser,
+  out : Array[ExternalDecl],
+  nested : Bool,
+) -> Unit {
+  while !(self.peek().kind is Eof) {
+    if nested && self.at_punct("}") {
+      return
+    }
+    if self.at_linkage_block() {
+      self.pos = self.pos + 1 // "extern"
+      if self.peek().kind is StringLit(_) {
+        self.pos = self.pos + 1
+      }
+      self.expect_punct("{")
+      self.parse_external_decls(out, true)
+      self.expect_punct("}")
+      continue
+    }
+    out.push(self.parse_external_decl())
+  }
+}
+
+///|
 fn Parser::parse_asm(self : Parser) -> String {
   self.pos = self.pos + 1
   let mut go = true
@@ -582,6 +648,14 @@ fn Parser::eat_storage(self : Parser, out : Array[String]) -> Bool {
         | "thread_local" => {
           out.push(k)
           self.pos = self.pos + 1
+          // extern "C" int f(void); - the language linkage on a single
+          // declaration is accepted and ignored (see parse_external_decls).
+          if k == "extern" {
+            match self.peek().kind {
+              StringLit(_) => self.pos = self.pos + 1
+              _ => ()
+            }
+          }
           true
         }
         _ => false
@@ -793,6 +867,9 @@ fn Parser::parse_param_list(self : Parser) -> (Array[ParamDecl], Bool) {
       let d = self.parse_declarator()
       params.push({ spec, decl: d, })
       if self.eat_punct(",") {
+        if self.eat_list_close() {
+          break
+        }
         continue
       }
       self.expect_punct(")")
@@ -1723,6 +1800,9 @@ fn Parser::parse_postfix_tail(self : Parser, start : Expr) -> Expr {
         while more {
           args.push(self.parse_assign_expr())
           if self.eat_punct(",") {
+            if self.eat_list_close() {
+              break
+            }
             continue
           }
           self.expect_punct(")")
@@ -1911,8 +1991,6 @@ pub fn parse(
     pack_stack: [],
   }
   let decls : Array[ExternalDecl] = []
-  while !(p.peek().kind is Eof) {
-    decls.push(p.parse_external_decl())
-  }
+  p.parse_external_decls(decls, false)
   { decls, }
 }
