@@ -22,7 +22,7 @@ pub fn func_params(d : @front.Declarator) -> Array[@front.ParamDecl] {
 }
 
 ///|
-pub fn collect_locals(s : TStmt, out : Array[(String, CType, Int)]) -> Unit {
+pub fn collect_locals(s : TStmt, out : Array[(String, CType, Int32)]) -> Unit {
   match s.kind {
     KSBlock(items) =>
       for x in items {
@@ -102,7 +102,7 @@ pub fn collect_locals(s : TStmt, out : Array[(String, CType, Int)]) -> Unit {
 }
 
 ///|
-fn collect_expr_locals(e : TExpr, out : Array[(String, CType, Int)]) -> Unit {
+fn collect_expr_locals(e : TExpr, out : Array[(String, CType, Int32)]) -> Unit {
   match e.kind {
     TStmtExpr(items) =>
       for s in items {
@@ -223,7 +223,7 @@ fn expr_has_label_addr(e : @front.Expr) -> Bool {
 
 ///|
 // Effective alignment of a declaration, taking _Alignas into account.
-fn spec_align(spec : @front.DeclSpec, ty : CType, ctx : Ctx) -> Int {
+fn spec_align(spec : @front.DeclSpec, ty : CType, ctx : Ctx) -> Int32 {
   let mut a = align_of_ty(ty, ctx.layouts)
   for al in spec.align {
     let req = match al {
@@ -305,7 +305,7 @@ fn check_local_decl(
             ctx.static_counter = ctx.static_counter + 1
             let gname = "__static_" + n + "_" + ctx.static_counter.to_string()
             let bytes : Array[Byte] = []
-            let relocs : Array[(Int, GlobalReloc)] = []
+            let relocs : Array[(Int32, GlobalReloc)] = []
             match idecl.init {
               Some(init) => encode_global_init(init, ty, 0, bytes, relocs, ctx)
               None => ()
@@ -411,7 +411,7 @@ fn check_local_decl(
                 out.push({ kind: KSDecl(lname, ty, Some(te), al), })
               }
               Some(@front.IList(_)) => {
-                let stores : Array[(Int, TExpr, Int, Int)] = []
+                let stores : Array[(Int32, TExpr, Int32, Int32)] = []
                 match idecl.init {
                   Some(init) => check_init_into(init, ty, 0, stores, ctx)
                   None => ()
@@ -469,8 +469,8 @@ fn check_local_decl(
 fn check_init_into(
   init : @front.Initializer,
   ty : CType,
-  base_off : Int,
-  stores : Array[(Int, TExpr, Int, Int)],
+  base_off : Int32,
+  stores : Array[(Int32, TExpr, Int32, Int32)],
   ctx : Ctx,
 ) -> Unit {
   match init {
@@ -688,7 +688,7 @@ fn sw_collect_one(
   st : TStmt,
   cases : Array[(Int64, TStmt)],
   dflt : Array[TStmt?],
-  dfpos : Array[Int],
+  dfpos : Array[Int32],
 ) -> Unit {
   match st.kind {
     KSBlock(ss) => sw_collect(ss, cases, dflt, dfpos)
@@ -717,7 +717,7 @@ fn sw_collect(
   ss : Array[TStmt],
   cases : Array[(Int64, TStmt)],
   dflt : Array[TStmt?],
-  dfpos : Array[Int],
+  dfpos : Array[Int32],
 ) -> Unit {
   let n = ss.length()
   let mut i = 0
@@ -757,7 +757,7 @@ fn check_jump_out_of_defer(ctx : Ctx) -> Unit {
 }
 
 ///|
-fn find_label(stack : Array[Array[String]], l : String) -> Int? {
+fn find_label(stack : Array[Array[String]], l : String) -> Int32? {
   let mut i = stack.length()
   while i > 0 {
     i = i - 1
@@ -804,7 +804,7 @@ fn check_switch(ctrl : @front.Expr, body : @front.Stmt, ctx : Ctx) -> TStmt {
   }
   let cases : Array[(Int64, TStmt)] = []
   let dflt : Array[TStmt?] = [None]
-  let dfpos : Array[Int] = [cases.length()]
+  let dfpos : Array[Int32] = [cases.length()]
   sw_collect(stmts, cases, dflt, dfpos)
   let _ = ctx.break_labels.pop()
   ctx.switch_depth = ctx.switch_depth - 1

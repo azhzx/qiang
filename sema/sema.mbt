@@ -14,23 +14,23 @@ pub struct Ctx {
   funcs : Array[CheckedFunc]
   globals : Array[CheckedGlobal]
   mut cur_params : Array[(String, CType)]
-  mut cur_locals : Array[(String, CType, Int)]
+  mut cur_locals : Array[(String, CType, Int32)]
   // Distinguishes two locals that share a name in sibling scopes (see
   // check_decl in stmt.mbt).
-  mut local_seq : Int
+  mut local_seq : Int32
   local_names : Map[String, Bool]
-  mut loop_depth : Int
-  mut switch_depth : Int
+  mut loop_depth : Int32
+  mut switch_depth : Int32
   // C2y named loops: the label waiting to name the next loop/switch, and the
   // stack of labels on the enclosing breakable/continuable constructs.
   label_pending : Array[String]
   // Nesting depth inside _Defer statements: jumps out of one are diagnosed.
-  mut defer_depth : Int
+  mut defer_depth : Int32
   break_labels : Array[Array[String]]
   cont_labels : Array[Array[String]]
   mut labels : Map[String, Bool]
   mut gotos : Array[String]
-  mut static_counter : Int
+  mut static_counter : Int32
   // C99 6.7.4p6: an `inline` definition is an inline definition (no external
   // definition) only when every declaration of it in the translation unit
   // carries `inline`. Names declared by a plain prototype are collected up
@@ -89,7 +89,7 @@ fn storage_of(spec : @front.DeclSpec) -> Storage {
 }
 
 ///|
-fn digit_val(c : Char) -> Int {
+fn digit_val(c : Char) -> Int32 {
   let n = c.to_int()
   if n >= 48 && n <= 57 {
     n - 48
@@ -131,7 +131,7 @@ pub fn parse_int_lit(s : String) -> Int64 {
 }
 
 ///|
-fn sign_extend_char(v : Int) -> Int64 {
+fn sign_extend_char(v : Int32) -> Int64 {
   let b = v & 0xFF
   if b >= 128 {
     (b - 256).to_int64()
@@ -450,7 +450,7 @@ fn check_external(d : @front.ExternalDecl, ctx : Ctx) -> Unit {
                 _ => None
               }
               let bytes : Array[Byte] = []
-              let relocs : Array[(Int, GlobalReloc)] = []
+              let relocs : Array[(Int32, GlobalReloc)] = []
               match idecl.init {
                 Some(i) => encode_global_init(i, ty, 0, bytes, relocs, ctx)
                 None => ()
@@ -631,8 +631,8 @@ fn collect_noninline_func_decls(
 ///|
 pub fn check(
   tu : @front.TranslationUnit,
-  mode? : @front.StdMode = @front.Cqe,
-  strict? : Bool = false,
+  mode~ : @front.StdMode = @front.Cqe,
+  strict~ : Bool = false,
 ) -> CheckedProgram {
   let noninline_funcs : Map[String, Bool] = Map::new()
   for d in tu.decls {

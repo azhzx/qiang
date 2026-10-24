@@ -5,10 +5,10 @@
 ///|
 /// Source position (1-based).
 pub struct Span {
-  line : Int
-  col : Int
+  line : Int32
+  col : Int32
   // Length in bytes of the construct, for the caret run in a diagnostic.
-  len : Int
+  len : Int32
 }
 
 ///|
@@ -37,8 +37,8 @@ pub(all) enum TypeSpec {
   TKw(String)
   // The Int is the active `#pragma pack` value (0 = natural alignment) at the
   // point the specifier was written; see Parser::try_pragma.
-  TStruct(String?, Array[StructDecl], Int)
-  TUnion(String?, Array[StructDecl], Int)
+  TStruct(String?, Array[StructDecl], Int32)
+  TUnion(String?, Array[StructDecl], Int32)
   // QPCC -f_tagged_union: _Tagged_union Tag { members }. The tag is a
   // synthetic int at offset 0, the members overlap after it.
   TTaggedUnion(String?, Array[StructDecl])

@@ -264,7 +264,7 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
 
 ///|
 /// The alignment a member may actually use under `#pragma pack(N)` (0 = natural).
-fn pack_align(a : Int, pack : Int) -> Int {
+fn pack_align(a : Int32, pack : Int32) -> Int32 {
   if pack > 0 && a > pack {
     pack
   } else {
@@ -278,8 +278,8 @@ fn resolve_aggregate(
   tag : String?,
   body : Array[@front.StructDecl],
   is_union : Bool,
-  pack : Int,
-) -> Int {
+  pack : Int32,
+) -> Int32 {
   if body.length() == 0 {
     match tag {
       Some(t) =>
@@ -409,8 +409,8 @@ fn define_aggregate(
   tag : String?,
   body : Array[@front.StructDecl],
   is_union : Bool,
-  pack : Int,
-) -> Int {
+  pack : Int32,
+) -> Int32 {
   let fields : Array[Field] = []
   let mut off = 0
   let mut maxa = 1

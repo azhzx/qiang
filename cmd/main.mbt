@@ -70,7 +70,7 @@ fn front_end(
   display : String,
   mode : @front.StdMode,
   tagged_union : Bool,
-  strict? : Bool = false,
+  strict~ : Bool = false,
 ) -> @sema.CheckedProgram? {
   let src = @fs.read_file_to_string(input) catch {
     _ => {

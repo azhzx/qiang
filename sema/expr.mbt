@@ -507,7 +507,7 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
     @front.ECompound(spec, d, init) => {
       let base = declspec_to_type(spec, ctx)
       let ty = build_type(d, base, ctx)
-      let stores : Array[(Int, TExpr, Int, Int)] = []
+      let stores : Array[(Int32, TExpr, Int32, Int32)] = []
       check_init_into(init, ty, 0, stores, ctx)
       mk_expr(TCompoundLit(stores), ty, true)
     }

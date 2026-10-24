@@ -1,12 +1,12 @@
 ///|
-fn ensure_len(bytes : Array[Byte], n : Int) -> Unit {
+fn ensure_len(bytes : Array[Byte], n : Int32) -> Unit {
   while bytes.length() < n {
     bytes.push((0).to_byte())
   }
 }
 
 ///|
-fn put_int(bytes : Array[Byte], off : Int, size : Int, v : Int64) -> Unit {
+fn put_int(bytes : Array[Byte], off : Int32, size : Int32, v : Int64) -> Unit {
   let mut i = 0
   while i < size {
     let b = ((v >> (i * 8)) & 0xFFL).to_int().to_byte()
@@ -21,7 +21,7 @@ fn put_int(bytes : Array[Byte], off : Int, size : Int, v : Int64) -> Unit {
 }
 
 ///|
-fn put_str(bytes : Array[Byte], off : Int, s : String) -> Int {
+fn put_str(bytes : Array[Byte], off : Int32, s : String) -> Int32 {
   let a = s.to_array()
   let mut i = 0
   for c in a {
@@ -68,7 +68,7 @@ fn ptr_reloc(e : @front.Expr, elem : CType, ctx : Ctx) -> GlobalReloc? {
       let base = declspec_to_type(spec, ctx)
       let ty = build_type(d, base, ctx)
       let bytes : Array[Byte] = []
-      let relocs : Array[(Int, GlobalReloc)] = []
+      let relocs : Array[(Int32, GlobalReloc)] = []
       encode_global_init(ini, ty, 0, bytes, relocs, ctx)
       ctx.static_counter = ctx.static_counter + 1
       let gname = "__compound_" + ctx.static_counter.to_string()
@@ -118,9 +118,9 @@ fn ptr_reloc(e : @front.Expr, elem : CType, ctx : Ctx) -> GlobalReloc? {
 fn encode_ptr(
   e : @front.Expr,
   elem : CType,
-  off : Int,
+  off : Int32,
   bytes : Array[Byte],
-  relocs : Array[(Int, GlobalReloc)],
+  relocs : Array[(Int32, GlobalReloc)],
   ctx : Ctx,
 ) -> Unit {
   ensure_len(bytes, off + 8)
@@ -134,9 +134,9 @@ fn encode_ptr(
 pub fn encode_global_init(
   init : @front.Initializer,
   ty : CType,
-  off : Int,
+  off : Int32,
   bytes : Array[Byte],
-  relocs : Array[(Int, GlobalReloc)],
+  relocs : Array[(Int32, GlobalReloc)],
   ctx : Ctx,
 ) -> Unit {
   ensure_len(bytes, off + size_of_ty(ty, ctx.layouts))
@@ -314,10 +314,10 @@ pub fn encode_global_init(
 // Merge a value into a bitfield that lives inside the bytes already emitted.
 fn put_bits(
   bytes : Array[Byte],
-  off : Int,
-  size : Int,
-  bo : Int,
-  bw : Int,
+  off : Int32,
+  size : Int32,
+  bo : Int32,
+  bw : Int32,
   v : Int64,
 ) -> Unit {
   ensure_len(bytes, off + size)
@@ -338,12 +338,12 @@ fn put_bits(
 fn encode_designated(
   init : @front.Initializer,
   ty : CType,
-  off : Int,
+  off : Int32,
   bytes : Array[Byte],
-  relocs : Array[(Int, GlobalReloc)],
+  relocs : Array[(Int32, GlobalReloc)],
   ctx : Ctx,
   desigs : Array[@front.Designator],
-  di : Int,
+  di : Int32,
 ) -> Unit {
   if di >= desigs.length() {
     encode_global_init(init, ty, off, bytes, relocs, ctx)

@@ -34,7 +34,7 @@ pub struct Symbol {
 ///|
 pub struct ScopeStack {
   scopes : Array[Map[String, Symbol]]
-  tags : Array[Map[String, Int]]
+  tags : Array[Map[String, Int32]]
 }
 
 ///|
@@ -76,13 +76,13 @@ pub fn ScopeStack::lookup(self : ScopeStack, name : String) -> Symbol? {
 pub fn ScopeStack::define_tag(
   self : ScopeStack,
   name : String,
-  idx : Int,
+  idx : Int32,
 ) -> Unit {
   self.tags[self.tags.length() - 1].set(name, idx)
 }
 
 ///|
-pub fn ScopeStack::lookup_tag(self : ScopeStack, name : String) -> Int? {
+pub fn ScopeStack::lookup_tag(self : ScopeStack, name : String) -> Int32? {
   let mut i = self.tags.length()
   while i > 0 {
     i = i - 1

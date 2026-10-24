@@ -3,21 +3,21 @@ priv struct Cg {
   b : @ir_builder.Builder
   layouts : Array[@sema.Layout]
   strings : Array[String]
-  mut locals : Map[String, Int]
+  mut locals : Map[String, Int32]
   mut local_ty : Map[String, @sema.CType]
-  mut labels : Map[String, Int]
-  mut fid : Int
-  break_blks : Array[Int]
-  cont_blks : Array[Int]
+  mut labels : Map[String, Int32]
+  mut fid : Int32
+  break_blks : Array[Int32]
+  cont_blks : Array[Int32]
   mut ret_ty : @sema.CType
   mut open : Bool
   mut ret_sret : Bool
-  mut sret_ptr : Int
-  mut scratch : Int
-  mut bump : Int
-  mut block_seq : Int
-  label_ids : Map[String, Int]
-  mut label_seq : Int
+  mut sret_ptr : Int32
+  mut scratch : Int32
+  mut bump : Int32
+  mut block_seq : Int32
+  label_ids : Map[String, Int32]
+  mut label_seq : Int32
   mut cur_labels : Array[String]
   // C2y named loops: which loop/switch labels have already had their jump
   // target emitted, so a duplicate label on a nested loop does not jump back.
@@ -26,15 +26,15 @@ priv struct Cg {
   // statements registered in it. break/cont frames and goto labels remember
   // how deep the frame stack was, so a jump can run the frames it leaves.
   defer_frames : Array[Array[@sema.TStmt]]
-  break_depths : Array[Int]
-  cont_depths : Array[Int]
-  label_depths : Map[String, Int]
+  break_depths : Array[Int32]
+  cont_depths : Array[Int32]
+  label_depths : Map[String, Int32]
   // One frame per `switch` while its body is generated: the block each case
   // label landed in, and the block the default label landed in (the switch end
   // when there is none). The tests are emitted after the body, so they can
   // point at the blocks the labels actually chose.
-  switch_cases : Array[Array[(Int64, Int)]]
-  switch_dflt : Array[Int]
+  switch_cases : Array[Array[(Int64, Int32)]]
+  switch_dflt : Array[Int32]
 }
 
 ///|
@@ -88,12 +88,12 @@ fn is_aggregate(ty : @sema.CType) -> Bool {
 }
 
 ///|
-fn size_of(ty : @sema.CType, layouts : Array[@sema.Layout]) -> Int {
+fn size_of(ty : @sema.CType, layouts : Array[@sema.Layout]) -> Int32 {
   @sema.size_of_ty(ty, layouts)
 }
 
 ///|
-fn align_of(ty : @sema.CType, layouts : Array[@sema.Layout]) -> Int {
+fn align_of(ty : @sema.CType, layouts : Array[@sema.Layout]) -> Int32 {
   @sema.align_of_ty(ty, layouts)
 }
 
@@ -119,7 +119,7 @@ fn promote_small(ty : @sema.CType) -> @sema.CType {
 ///|
 // Which integer bit intrinsic is this? 0 = none, otherwise kind * 100 + bits,
 // with kind 1 bswap, 2 clz, 3 ctz, 4 popcount.
-fn bit_intrin(name : String) -> Int {
+fn bit_intrin(name : String) -> Int32 {
   match name {
     "__builtin_bswap16" => 116
     "__builtin_bswap32" => 132
@@ -138,7 +138,7 @@ fn bit_intrin(name : String) -> Int {
 }
 
 ///|
-fn Cg::k64(c : Cg, v : Int64) -> Int {
+fn Cg::k64(c : Cg, v : Int64) -> Int32 {
   c.b.iconst(c.fid, v)
 }
 
@@ -147,15 +147,20 @@ fn Cg::bit2(
   c : Cg,
   op : @types.Op,
   cls : @types.Class,
-  a : Int,
-  b : Int,
-) -> Int {
+  a : Int32,
+  b : Int32,
+) -> Int32 {
   c.b.arith(c.fid, op, cls, a, b)
 }
 
 ///|
 // SWAR population count, no branches.
-fn Cg::gen_popcount(c : Cg, cls : @types.Class, bits : Int, x : Int) -> Int {
+fn Cg::gen_popcount(
+  c : Cg,
+  cls : @types.Class,
+  bits : Int32,
+  x : Int32,
+) -> Int32 {
   let mut v = x
   if bits == 64 {
     v = c.bit2(
@@ -248,7 +253,7 @@ fn Cg::gen_popcount(c : Cg, cls : @types.Class, bits : Int, x : Int) -> Int {
 // Integer bit intrinsics. QBE has no op for them, so emit the sequence: bswap
 // reverses the bytes, clz smears the bits down and subtracts its population
 // from the width, ctz counts the bits below the lowest set one.
-fn Cg::gen_bit_intrin(c : Cg, kind : Int, bits : Int, x : Int) -> Int {
+fn Cg::gen_bit_intrin(c : Cg, kind : Int32, bits : Int32, x : Int32) -> Int32 {
   let cls = if bits == 64 { @types.Kl } else { @types.Kw }
   if kind == 1 {
     let nb = bits / 8
@@ -329,7 +334,7 @@ fn wider(l : @sema.CType, r : @sema.CType) -> @types.Class {
 }
 
 ///|
-fn Cg::zero_of(c : Cg, cls : @types.Class) -> Int {
+fn Cg::zero_of(c : Cg, cls : @types.Class) -> Int32 {
   if cls == @types.Ks {
     c.b.sconst(c.fid, 0.0)
   } else if cls == @types.Kd {
@@ -340,7 +345,7 @@ fn Cg::zero_of(c : Cg, cls : @types.Class) -> Int {
 }
 
 ///|
-fn Cg::one_of(c : Cg, cls : @types.Class) -> Int {
+fn Cg::one_of(c : Cg, cls : @types.Class) -> Int32 {
   if cls == @types.Ks {
     c.b.sconst(c.fid, 1.0)
   } else if cls == @types.Kd {
@@ -351,7 +356,7 @@ fn Cg::one_of(c : Cg, cls : @types.Class) -> Int {
 }
 
 ///|
-fn Cg::truthy(c : Cg, ty : @sema.CType, v : Int) -> Int {
+fn Cg::truthy(c : Cg, ty : @sema.CType, v : Int32) -> Int32 {
   match ty {
     @sema.CComplex(elem) => {
       let cls = cls_of(elem)
@@ -407,11 +412,11 @@ fn Cg::truthy(c : Cg, ty : @sema.CType, v : Int) -> Int {
 ///|
 fn Cg::coerce(
   c : Cg,
-  v : Int,
+  v : Int32,
   from : @types.Class,
   to : @types.Class,
-  uns? : Bool = false,
-) -> Int {
+  uns~ : Bool = false,
+) -> Int32 {
   if from == to {
     v
   } else if from == @types.Kw && to == @types.Kl {
@@ -451,7 +456,7 @@ fn Cg::coerce(
 }
 
 ///|
-fn Cg::load_scalar(c : Cg, ty : @sema.CType, addr : Int) -> Int {
+fn Cg::load_scalar(c : Cg, ty : @sema.CType, addr : Int32) -> Int32 {
   match ty {
     @sema.CBool => c.b.load(c.fid, @types.Loadub, @types.Kw, addr)
     @sema.CChar(s) =>
@@ -504,7 +509,12 @@ fn Cg::load_scalar(c : Cg, ty : @sema.CType, addr : Int) -> Int {
 }
 
 ///|
-fn Cg::store_scalar(c : Cg, ty : @sema.CType, val : Int, addr : Int) -> Unit {
+fn Cg::store_scalar(
+  c : Cg,
+  ty : @sema.CType,
+  val : Int32,
+  addr : Int32,
+) -> Unit {
   match ty {
     @sema.CBool | @sema.CChar(_) =>
       c.b.store(c.fid, @types.Storeb, @types.Kw, val, addr)
@@ -527,13 +537,13 @@ fn Cg::store_scalar(c : Cg, ty : @sema.CType, val : Int, addr : Int) -> Unit {
 }
 
 ///|
-fn Cg::new_block(c : Cg, name : String) -> Int {
+fn Cg::new_block(c : Cg, name : String) -> Int32 {
   c.block_seq = c.block_seq + 1
   c.b.add_block(c.fid, name + "." + c.block_seq.to_string())
 }
 
 ///|
-fn Cg::switch(c : Cg, blk : Int) -> Unit {
+fn Cg::switch(c : Cg, blk : Int32) -> Unit {
   c.b.switch_to(c.fid, blk)
   c.open = true
 }
@@ -555,7 +565,7 @@ fn is_composite(ty : @sema.CType) -> Bool {
 
 ///|
 /// Address plus a constant byte offset.
-fn Cg::add_off(c : Cg, addr : Int, off : Int) -> Int {
+fn Cg::add_off(c : Cg, addr : Int32, off : Int32) -> Int32 {
   if off == 0 {
     addr
   } else {
@@ -570,7 +580,7 @@ fn Cg::add_off(c : Cg, addr : Int, off : Int) -> Int {
 }
 
 ///|
-fn Cg::alloc_slot(c : Cg, size : Int) -> Int {
+fn Cg::alloc_slot(c : Cg, size : Int32) -> Int32 {
   c.alloc_slot_al(size, 0)
 }
 
@@ -580,10 +590,10 @@ fn Cg::alloc_slot(c : Cg, size : Int) -> Int {
 fn Cg::store_bitfield(
   c : Cg,
   ty : @sema.CType,
-  value : Int,
-  addr : Int,
-  bo : Int,
-  bw : Int,
+  value : Int32,
+  addr : Int32,
+  bo : Int32,
+  bw : Int32,
 ) -> Unit {
   let cls = cls_of(ty)
   let old = c.load_scalar(ty, addr)
@@ -610,7 +620,7 @@ fn Cg::store_bitfield(
 
 ///|
 // Clear `size` bytes at `addr` with 8-byte stores.
-fn Cg::zero_mem(c : Cg, addr : Int, size : Int) -> Unit {
+fn Cg::zero_mem(c : Cg, addr : Int32, size : Int32) -> Unit {
   let mut off = 0
   while off < size {
     let a = if off == 0 {
@@ -631,7 +641,7 @@ fn Cg::zero_mem(c : Cg, addr : Int, size : Int) -> Unit {
 
 ///|
 // Allocate a stack slot with an explicit alignment (C _Alignas).
-fn Cg::alloc_slot_al(c : Cg, size : Int, align : Int) -> Int {
+fn Cg::alloc_slot_al(c : Cg, size : Int32, align : Int32) -> Int32 {
   let a = if align < 8 { 8 } else if align <= 16 { align } else { 16 }
   let sz = if size < a { a } else { (size + a - 1) / a * a }
   let op = if a >= 16 {
@@ -652,7 +662,7 @@ fn Cg::alloc_slot_al(c : Cg, size : Int, align : Int) -> Int {
 }
 
 ///|
-fn Cg::emit_memcpy(c : Cg, dst : Int, src : Int, n : Int) -> Unit {
+fn Cg::emit_memcpy(c : Cg, dst : Int32, src : Int32, n : Int32) -> Unit {
   let _ = c.b.call(
     c.fid,
     "memcpy",
@@ -667,7 +677,7 @@ fn Cg::emit_memcpy(c : Cg, dst : Int, src : Int, n : Int) -> Unit {
 
 ///|
 /// Number of 8-byte register words a composite parameter occupies (<16B).
-fn param_words(sz : Int) -> Int {
+fn param_words(sz : Int32) -> Int32 {
   (sz + 7) / 8
 }
 
@@ -677,7 +687,7 @@ fn is_cmp(op : String) -> Bool {
 }
 
 ///|
-fn Cg::bitfield_addr(c : Cg, base : @sema.TExpr, off : Int) -> Int {
+fn Cg::bitfield_addr(c : Cg, base : @sema.TExpr, off : Int32) -> Int32 {
   let a = c.gen_addr(base)
   if off == 0 {
     a
@@ -696,10 +706,10 @@ fn Cg::bitfield_addr(c : Cg, base : @sema.TExpr, off : Int) -> Int {
 fn Cg::bitfield_read(
   c : Cg,
   ty : @sema.CType,
-  addr : Int,
-  bo : Int,
-  bw : Int,
-) -> Int {
+  addr : Int32,
+  bo : Int32,
+  bw : Int32,
+) -> Int32 {
   let raw = c.load_scalar(ty, addr)
   let cls = cls_of(ty)
   let bits = size_of(ty, c.layouts) * 8
@@ -725,7 +735,7 @@ fn elem_of(ty : @sema.CType) -> @sema.CType {
 }
 
 ///|
-fn Cg::gen_addr(c : Cg, e : @sema.TExpr) -> Int {
+fn Cg::gen_addr(c : Cg, e : @sema.TExpr) -> Int32 {
   match e.kind {
     @sema.TVar(n) =>
       match c.locals.get(n) {
@@ -805,7 +815,7 @@ fn Cg::gen_addr(c : Cg, e : @sema.TExpr) -> Int {
 }
 
 ///|
-fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
+fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int32 {
   match e.kind {
     @sema.TInt(n) => c.b.iconst(c.fid, n)
     @sema.TFlt(v, is_f) =>
@@ -1062,7 +1072,7 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
       } else {
         -1
       }
-      let arglist : Array[(@types.Class, Int)] = []
+      let arglist : Array[(@types.Class, Int32)] = []
       if ret_aggr {
         arglist.push((@types.Kl, sret_tmp))
       }
@@ -1116,8 +1126,8 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int {
       }
       let cv = if direct && name != "" {
         if va {
-          let fixed : Array[(@types.Class, Int)] = []
-          let rest : Array[(@types.Class, Int)] = []
+          let fixed : Array[(@types.Class, Int32)] = []
+          let rest : Array[(@types.Class, Int32)] = []
           let limit = nfixed + (if ret_aggr { 1 } else { 0 })
           let mut i = 0
           for a in arglist {
@@ -1255,7 +1265,7 @@ fn is_complex_ty(ty : @sema.CType) -> Bool {
 }
 
 ///|
-fn Cg::zero_elem(c : Cg, elem : @sema.CType) -> Int {
+fn Cg::zero_elem(c : Cg, elem : @sema.CType) -> Int32 {
   if is_flt(elem) {
     c.b.fconst(c.fid, 0.0)
   } else {
@@ -1268,7 +1278,7 @@ fn Cg::complex_operand(
   c : Cg,
   x : @sema.TExpr,
   elem : @sema.CType,
-) -> (Int, Int) {
+) -> (Int32, Int32) {
   if is_complex_ty(x.ty) {
     let addr = c.gen_expr(x)
     let esz = size_of(elem, c.layouts)
@@ -1293,7 +1303,7 @@ fn Cg::gen_complex_bin(
   op : String,
   l : @sema.TExpr,
   r : @sema.TExpr,
-) -> Int {
+) -> Int32 {
   let cty = if is_complex_ty(l.ty) { l.ty } else { r.ty }
   let elem = elem_of(cty)
   let cls = cls_of(elem)
@@ -1399,7 +1409,7 @@ fn Cg::gen_bin(
   l : @sema.TExpr,
   r : @sema.TExpr,
   result_ty : @sema.CType,
-) -> Int {
+) -> Int32 {
   if op == "&&" || op == "||" {
     let true_b = c.new_block("logic.true")
     let false_b = c.new_block("logic.false")
@@ -1512,7 +1522,7 @@ fn Cg::gen_bin(
 }
 
 ///|
-fn Cg::truncate(c : Cg, ty : @sema.CType, v : Int) -> Int {
+fn Cg::truncate(c : Cg, ty : @sema.CType, v : Int32) -> Int32 {
   match ty {
     @sema.CBool => v
     @sema.CChar(sgn) =>
@@ -1546,7 +1556,12 @@ fn Cg::truncate(c : Cg, ty : @sema.CType, v : Int) -> Int {
 }
 
 ///|
-fn Cg::convert(c : Cg, v : Int, from : @sema.CType, to : @sema.CType) -> Int {
+fn Cg::convert(
+  c : Cg,
+  v : Int32,
+  from : @sema.CType,
+  to : @sema.CType,
+) -> Int32 {
   match to {
     @sema.CBool => return c.truthy(from, v)
     _ => ()
@@ -1683,7 +1698,7 @@ fn cmp_op(op : String, cls : @types.Class, uns : Bool, fl : Bool) -> @types.Op {
 
 ///|
 // Unary operators on a _Complex value.
-fn Cg::gen_complex_un(c : Cg, op : String, x : @sema.TExpr) -> Int {
+fn Cg::gen_complex_un(c : Cg, op : String, x : @sema.TExpr) -> Int32 {
   let elem = elem_of(x.ty)
   let cls = cls_of(elem)
   let esz = size_of(elem, c.layouts)
@@ -1707,7 +1722,7 @@ fn Cg::gen_complex_un(c : Cg, op : String, x : @sema.TExpr) -> Int {
 }
 
 ///|
-fn Cg::gen_un(c : Cg, op : String, x : @sema.TExpr) -> Int {
+fn Cg::gen_un(c : Cg, op : String, x : @sema.TExpr) -> Int32 {
   if op == "__real__" || op == "__imag__" {
     if is_complex_ty(x.ty) {
       let elem = elem_of(x.ty)
@@ -1819,7 +1834,7 @@ fn Cg::gen_switch(
   e : @sema.TExpr,
   cases : Array[(Int64, @sema.TStmt)],
   dflt : @sema.TStmt?,
-  dfpos : Int,
+  dfpos : Int32,
   body : @sema.TStmt,
 ) -> Unit {
   let _ = dfpos
@@ -1828,7 +1843,7 @@ fn Cg::gen_switch(
   let v = c.gen_expr(e)
   let cls = cls_of(e.ty)
   let n = cases.length()
-  let tests : Array[Int] = []
+  let tests : Array[Int32] = []
   for _i in 0..<n {
     tests.push(c.new_block("switch.test"))
   }
@@ -1849,11 +1864,11 @@ fn Cg::gen_switch(
     c.b.jmp(c.fid, end, [])
   }
   c.open = false
-  let reg : Array[(Int64, Int)] = match c.switch_cases.pop() {
+  let reg : Array[(Int64, Int32)] = match c.switch_cases.pop() {
     Some(x) => x
     None => []
   }
-  let dblk : Int = match c.switch_dflt.pop() {
+  let dblk : Int32 = match c.switch_dflt.pop() {
     Some(x) => x
     None => end
   }
@@ -1891,7 +1906,7 @@ fn Cg::gen_switch(
 ///|
 // Branch to t when e is true, to f otherwise. && and || are expanded into
 // control flow so their right-hand sides are only evaluated when needed.
-fn Cg::gen_cond_branch(c : Cg, e : @sema.TExpr, t : Int, f : Int) -> Unit {
+fn Cg::gen_cond_branch(c : Cg, e : @sema.TExpr, t : Int32, f : Int32) -> Unit {
   match e.kind {
     @sema.TBin(op, l, r) if op == "&&" || op == "||" => {
       let mid = c.new_block(if op == "&&" { "and.rhs" } else { "or.rhs" })
@@ -1916,7 +1931,7 @@ fn Cg::gen_cond_branch(c : Cg, e : @sema.TExpr, t : Int, f : Int) -> Unit {
 ///|
 // Emit the deferred statements of frames [from, len) innermost first (TS
 // 25755: they run when the enclosing block is left, in reverse order).
-fn Cg::run_defers(c : Cg, from : Int) -> Unit {
+fn Cg::run_defers(c : Cg, from : Int32) -> Unit {
   let mut i = c.defer_frames.length()
   while i > from {
     i = i - 1
@@ -1938,8 +1953,8 @@ fn Cg::run_defers(c : Cg, from : Int) -> Unit {
 ///|
 fn collect_label_depths(
   s : @sema.TStmt,
-  depth : Int,
-  out : Map[String, Int],
+  depth : Int32,
+  out : Map[String, Int32],
 ) -> Unit {
   match s.kind {
     @sema.KSBlock(ss) =>
@@ -2370,7 +2385,7 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
   c.labels = Map::new()
   c.break_blks.clear()
   c.cont_blks.clear()
-  let pvals : Array[Int] = []
+  let pvals : Array[Int32] = []
   for j in 0..<pclasses.length() {
     pvals.push(c.b.param(fid, j))
   }
@@ -2520,7 +2535,7 @@ pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
       }
       // Relocations may be produced out of order (e.g. decreasing array
       // designators); the emission loop below walks offsets forwards.
-      let rels : Array[(Int, @sema.GlobalReloc)] = []
+      let rels : Array[(Int32, @sema.GlobalReloc)] = []
       for entry in g.relocs {
         rels.push(entry)
       }

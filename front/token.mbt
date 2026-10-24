@@ -27,10 +27,10 @@ pub(all) enum TokenKind {
 ///|
 pub struct Token {
   kind : TokenKind
-  line : Int
-  col : Int
+  line : Int32
+  col : Int32
   // Length in bytes of the token text, for the caret run in a diagnostic.
-  len : Int
+  len : Int32
 }
 
 ///|

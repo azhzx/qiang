@@ -14,20 +14,20 @@ pub(all) enum CType {
   CDouble
   CComplex(CType)
   CPtr(CType)
-  CArray(CType, Int)
+  CArray(CType, Int32)
   CVLA(CType, TExpr)
   CFunc(CType, Array[CType], Bool)
-  CStruct(Int)
-  CUnion(Int)
-  CEnum(Int)
-  CBitInt(Int)
+  CStruct(Int32)
+  CUnion(Int32)
+  CEnum(Int32)
+  CBitInt(Int32)
   // QPCC/N3914: the `_Any_func` function type. It never appears on its own;
   // `_Function_pointer` is the pointer to it, which is the storage type.
   CAnyFunc
   // QPCC closures: a two-word { function pointer, environment pointer } value.
   // The Int is the layout of the captured environment, or -1 for the written
   // type `_Lambda T (params)` where no environment is known yet.
-  CClosure(CType, Array[CType], Int)
+  CClosure(CType, Array[CType], Int32)
 }
 
 ///|
@@ -193,7 +193,7 @@ pub fn int_type_limits(t : CType) -> (Int64, Int64)? {
 }
 
 ///|
-pub fn size_of_ty(t : CType, layouts : Array[Layout]) -> Int {
+pub fn size_of_ty(t : CType, layouts : Array[Layout]) -> Int32 {
   match t {
     CVoid => 1
     CBool | CChar(_) => 1
@@ -221,7 +221,7 @@ pub fn size_of_ty(t : CType, layouts : Array[Layout]) -> Int {
 }
 
 ///|
-pub fn align_of_ty(t : CType, layouts : Array[Layout]) -> Int {
+pub fn align_of_ty(t : CType, layouts : Array[Layout]) -> Int32 {
   match t {
     CVoid => 1
     CBool | CChar(_) => 1

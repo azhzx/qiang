@@ -22,9 +22,9 @@ fn env_layout(
   ctx : Ctx,
   caps : Array[@front.Capture],
   types : Array[CType],
-) -> (Int, Array[Int]) {
+) -> (Int32, Array[Int32]) {
   let fields : Array[Field] = []
-  let offs : Array[Int] = []
+  let offs : Array[Int32] = []
   let mut off = 0
   let mut maxa = 1
   for i in 0..<caps.length() {
@@ -203,7 +203,7 @@ fn check_lambda(
     body: tb,
     closure: Some({ self_name, captures: cap_infos, }),
   })
-  let fields : Array[(Int, TExpr, Bool)] = []
+  let fields : Array[(Int32, TExpr, Bool)] = []
   for i in 0..<caps.length() {
     fields.push((offs[i], cap_srcs[i], caps[i].by_ref))
   }

@@ -22,9 +22,9 @@ pub fn is_template_name(String) -> Bool
 
 pub fn parse(String, mode? : StdMode, tagged_union? : Bool, display? : String) -> TranslationUnit
 
-pub fn render_diag(String, String, String, String, Int, Int, Int) -> String
+pub fn render_diag(String, String, String, String, Int32, Int32, Int32) -> String
 
-pub fn source_line(String, Int) -> String
+pub fn source_line(String, Int32) -> String
 
 pub fn tokenize(String, StdMode, tagged_union? : Bool) -> Array[Token]
 
@@ -161,9 +161,9 @@ pub struct ParamDecl {
 }
 
 pub struct Span {
-  line : Int
-  col : Int
-  len : Int
+  line : Int32
+  col : Int32
+  len : Int32
 }
 
 pub(all) enum StdMode {
@@ -212,9 +212,9 @@ pub(all) enum StructDecl {
 
 pub struct Token {
   kind : TokenKind
-  line : Int
-  col : Int
-  len : Int
+  line : Int32
+  col : Int32
+  len : Int32
 }
 pub fn Token::text(Self) -> String
 
@@ -236,8 +236,8 @@ pub struct TranslationUnit {
 
 pub(all) enum TypeSpec {
   TKw(String)
-  TStruct(String?, Array[StructDecl], Int)
-  TUnion(String?, Array[StructDecl], Int)
+  TStruct(String?, Array[StructDecl], Int32)
+  TUnion(String?, Array[StructDecl], Int32)
   TTaggedUnion(String?, Array[StructDecl])
   TEnum(String?, Array[EnumItem], DeclSpec?)
   TTypedefName(String)

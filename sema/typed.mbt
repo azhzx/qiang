@@ -3,7 +3,7 @@
 pub(all) enum TExprKind {
   TInt(Int64)
   TFlt(Double, Bool)
-  TStr(Int)
+  TStr(Int32)
   TVar(String)
   TLabelAddr(String)
   TBin(String, TExpr, TExpr)
@@ -12,25 +12,25 @@ pub(all) enum TExprKind {
   TCall(String, TExpr, Array[TExpr])
   TCond(TExpr, TExpr, TExpr)
   TCast(TExpr)
-  TMember(TExpr, Int)
+  TMember(TExpr, Int32)
   // QPCC -f_tagged_union payload member: address is base + off, and a
   // store through it also writes the discriminator `tag` at base + 0.
-  TTaggedMember(TExpr, Int, Int64)
-  TBitField(TExpr, Int, Int, Int)
+  TTaggedMember(TExpr, Int32, Int64)
+  TBitField(TExpr, Int32, Int32, Int32)
   TIndex(TExpr, TExpr)
   TComma(TExpr, TExpr)
   TAddr(TExpr)
   TDeref(TExpr)
-  TSizeof(Int)
-  TAlignof(Int)
+  TSizeof(Int32)
+  TAlignof(Int32)
   TSizeofVLA(TExpr)
   TStmtExpr(Array[TStmt])
-  TCompoundLit(Array[(Int, TExpr, Int, Int)])
+  TCompoundLit(Array[(Int32, TExpr, Int32, Int32)])
   TVaArg(TExpr)
   // QPCC closures: build the { fn, env } pair. The String is the hidden
   // function, the Int the environment layout, and each triple is a captured
   // field (offset, source variable, captured by reference).
-  TLambda(String, Int, Array[(Int, TExpr, Bool)])
+  TLambda(String, Int32, Array[(Int32, TExpr, Bool)])
   // QPCC closures: the environment pointer of a closure value.
   TClosureEnv(TExpr)
   TUnsupported(String)
@@ -54,8 +54,8 @@ pub(all) enum TStmtKind {
   KSBlock(Array[TStmt])
   // The Int is how many break/continue frames to skip when the jump is
   // named (C2y N3355 named loops); 0 is the innermost.
-  KSBreak(Int)
-  KSContinue(Int)
+  KSBreak(Int32)
+  KSContinue(Int32)
   // TS 25755 _Defer: run this statement when the enclosing block exits.
   KSDefer(TStmt)
   KSLabel(String, TStmt)
@@ -64,14 +64,14 @@ pub(all) enum TStmtKind {
   // The Int is how many cases precede the default label in the source. C
   // lets a case fall through into the default, so the generated fall-through
   // chain has to put the default back at its source position.
-  KSSwitch(TExpr, Array[(Int64, TStmt)], TStmt?, Int, TStmt)
+  KSSwitch(TExpr, Array[(Int64, TStmt)], TStmt?, Int32, TStmt)
   // A case (or default) label still attached to its statement. Code generation
   // emits `body` in place and remembers the block the label landed in, so the
   // switch tests can point at it; that keeps a label nested in a loop attached
   // to the enclosing loop, which is what a Duff's device needs.
   KSCaseMark(Array[Int64], Bool, TStmt)
-  KSDecl(String, CType, TExpr?, Int)
-  KSAggInit(String, CType, Array[(Int, TExpr, Int, Int)], Int)
+  KSDecl(String, CType, TExpr?, Int32)
+  KSAggInit(String, CType, Array[(Int32, TExpr, Int32, Int32)], Int32)
   KSEmpty
 }
 
@@ -82,8 +82,8 @@ pub struct TStmt {
 
 ///|
 pub(all) enum GlobalReloc {
-  RGlobal(String, Int)
-  RString(Int, Int)
+  RGlobal(String, Int32)
+  RString(Int32, Int32)
 }
 
 ///|
@@ -92,9 +92,9 @@ pub struct CheckedGlobal {
   ty : CType
   init : Int64?
   bytes : Array[Byte]
-  relocs : Array[(Int, GlobalReloc)]
+  relocs : Array[(Int32, GlobalReloc)]
   is_export : Bool
-  align : Int
+  align : Int32
 }
 
 ///|
@@ -105,7 +105,7 @@ pub struct CheckedGlobal {
 /// reads and writes its copy and a by-reference capture holds the pointer.
 pub struct ClosureCapture {
   name : String
-  off : Int
+  off : Int32
   ty : CType
 }
 
@@ -122,7 +122,7 @@ pub struct CheckedFunc {
   name : String
   ty : CType
   params : Array[(String, CType)]
-  locals : Array[(String, CType, Int)]
+  locals : Array[(String, CType, Int32)]
   is_vararg : Bool
   is_export : Bool
   body : TStmt

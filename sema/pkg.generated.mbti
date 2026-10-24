@@ -6,9 +6,9 @@ import {
 }
 
 // Values
-pub fn align_of_ty(CType, Array[Layout]) -> Int
+pub fn align_of_ty(CType, Array[Layout]) -> Int32
 
-pub fn align_up(Int, Int) -> Int
+pub fn align_up(Int32, Int32) -> Int32
 
 pub fn build_type(@front.Declarator, CType, Ctx) -> CType
 
@@ -20,7 +20,7 @@ pub fn check_expr(@front.Expr, Ctx) -> TExpr
 
 pub fn check_stmt(@front.Stmt, Ctx) -> TStmt
 
-pub fn collect_locals(TStmt, Array[(String, CType, Int)]) -> Unit
+pub fn collect_locals(TStmt, Array[(String, CType, Int32)]) -> Unit
 
 pub fn common_type(CType, CType) -> CType
 
@@ -34,7 +34,7 @@ pub fn declspec_to_type(@front.DeclSpec, Ctx) -> CType
 
 pub fn decode_string(String) -> String
 
-pub fn encode_global_init(@front.Initializer, CType, Int, Array[Byte], Array[(Int, GlobalReloc)], Ctx) -> Unit
+pub fn encode_global_init(@front.Initializer, CType, Int32, Array[Byte], Array[(Int32, GlobalReloc)], Ctx) -> Unit
 
 pub fn func_params(@front.Declarator) -> Array[@front.ParamDecl]
 
@@ -68,7 +68,7 @@ pub fn parse_float_lit(String) -> Double
 
 pub fn parse_int_lit(String) -> Int64
 
-pub fn size_of_ty(CType, Array[Layout]) -> Int
+pub fn size_of_ty(CType, Array[Layout]) -> Int32
 
 pub fn ty_eq(CType, CType) -> Bool
 
@@ -90,22 +90,22 @@ pub(all) enum CType {
   CDouble
   CComplex(CType)
   CPtr(CType)
-  CArray(CType, Int)
+  CArray(CType, Int32)
   CVLA(CType, TExpr)
   CFunc(CType, Array[CType], Bool)
-  CStruct(Int)
-  CUnion(Int)
-  CEnum(Int)
-  CBitInt(Int)
+  CStruct(Int32)
+  CUnion(Int32)
+  CEnum(Int32)
+  CBitInt(Int32)
   CAnyFunc
-  CClosure(CType, Array[CType], Int)
+  CClosure(CType, Array[CType], Int32)
 }
 
 pub struct CheckedFunc {
   name : String
   ty : CType
   params : Array[(String, CType)]
-  locals : Array[(String, CType, Int)]
+  locals : Array[(String, CType, Int32)]
   is_vararg : Bool
   is_export : Bool
   body : TStmt
@@ -117,9 +117,9 @@ pub struct CheckedGlobal {
   ty : CType
   init : Int64?
   bytes : Array[Byte]
-  relocs : Array[(Int, GlobalReloc)]
+  relocs : Array[(Int32, GlobalReloc)]
   is_export : Bool
-  align : Int
+  align : Int32
 }
 
 pub struct CheckedProgram {
@@ -132,7 +132,7 @@ pub struct CheckedProgram {
 
 pub struct ClosureCapture {
   name : String
-  off : Int
+  off : Int32
   ty : CType
 }
 
@@ -152,34 +152,34 @@ pub struct Ctx {
   funcs : Array[CheckedFunc]
   globals : Array[CheckedGlobal]
   mut cur_params : Array[(String, CType)]
-  mut cur_locals : Array[(String, CType, Int)]
-  mut local_seq : Int
+  mut cur_locals : Array[(String, CType, Int32)]
+  mut local_seq : Int32
   local_names : Map[String, Bool]
-  mut loop_depth : Int
-  mut switch_depth : Int
+  mut loop_depth : Int32
+  mut switch_depth : Int32
   label_pending : Array[String]
-  mut defer_depth : Int
+  mut defer_depth : Int32
   break_labels : Array[Array[String]]
   cont_labels : Array[Array[String]]
   mut labels : Map[String, Bool]
   mut gotos : Array[String]
-  mut static_counter : Int
+  mut static_counter : Int32
   noninline_funcs : Map[String, Bool]
 }
 
 pub struct Diag {
   sev : Severity
-  line : Int
-  col : Int
-  len : Int
+  line : Int32
+  col : Int32
+  len : Int32
   msg : String
 }
 
 pub struct Diags {
   items : Array[Diag]
-  mut cur_line : Int
-  mut cur_col : Int
-  mut cur_len : Int
+  mut cur_line : Int32
+  mut cur_col : Int32
+  mut cur_len : Int32
 }
 pub fn Diags::error(Self, String) -> Unit
 pub fn Diags::has_error(Self) -> Bool
@@ -189,37 +189,37 @@ pub fn Diags::warning(Self, String) -> Unit
 pub struct Field {
   name : String
   ty : CType
-  offset : Int
-  bit_width : Int
-  bit_offset : Int
+  offset : Int32
+  bit_width : Int32
+  bit_offset : Int32
 }
 
 pub(all) enum GlobalReloc {
-  RGlobal(String, Int)
-  RString(Int, Int)
+  RGlobal(String, Int32)
+  RString(Int32, Int32)
 }
 
 pub struct Layout {
   name : String
   is_union : Bool
   fields : Array[Field]
-  size : Int
-  align : Int
+  size : Int32
+  align : Int32
   enum_vals : Array[(String, Int64)]
   enum_ty : CType?
   tagged : Bool
-  payload_off : Int
+  payload_off : Int32
   tag_vals : Array[(String, Int64)]
 }
 
 pub struct ScopeStack {
   scopes : Array[Map[String, Symbol]]
-  tags : Array[Map[String, Int]]
+  tags : Array[Map[String, Int32]]
 }
 pub fn ScopeStack::define(Self, Symbol) -> Unit
-pub fn ScopeStack::define_tag(Self, String, Int) -> Unit
+pub fn ScopeStack::define_tag(Self, String, Int32) -> Unit
 pub fn ScopeStack::lookup(Self, String) -> Symbol?
-pub fn ScopeStack::lookup_tag(Self, String) -> Int?
+pub fn ScopeStack::lookup_tag(Self, String) -> Int32?
 pub fn ScopeStack::new() -> Self
 pub fn ScopeStack::pop(Self) -> Unit
 pub fn ScopeStack::push(Self) -> Unit
@@ -266,7 +266,7 @@ pub struct TExpr {
 pub(all) enum TExprKind {
   TInt(Int64)
   TFlt(Double, Bool)
-  TStr(Int)
+  TStr(Int32)
   TVar(String)
   TLabelAddr(String)
   TBin(String, TExpr, TExpr)
@@ -275,20 +275,20 @@ pub(all) enum TExprKind {
   TCall(String, TExpr, Array[TExpr])
   TCond(TExpr, TExpr, TExpr)
   TCast(TExpr)
-  TMember(TExpr, Int)
-  TTaggedMember(TExpr, Int, Int64)
-  TBitField(TExpr, Int, Int, Int)
+  TMember(TExpr, Int32)
+  TTaggedMember(TExpr, Int32, Int64)
+  TBitField(TExpr, Int32, Int32, Int32)
   TIndex(TExpr, TExpr)
   TComma(TExpr, TExpr)
   TAddr(TExpr)
   TDeref(TExpr)
-  TSizeof(Int)
-  TAlignof(Int)
+  TSizeof(Int32)
+  TAlignof(Int32)
   TSizeofVLA(TExpr)
   TStmtExpr(Array[TStmt])
-  TCompoundLit(Array[(Int, TExpr, Int, Int)])
+  TCompoundLit(Array[(Int32, TExpr, Int32, Int32)])
   TVaArg(TExpr)
-  TLambda(String, Int, Array[(Int, TExpr, Bool)])
+  TLambda(String, Int32, Array[(Int32, TExpr, Bool)])
   TClosureEnv(TExpr)
   TUnsupported(String)
 }
@@ -305,16 +305,16 @@ pub(all) enum TStmtKind {
   KSDoWhile(TStmt, TExpr)
   KSFor(TStmt?, TExpr?, TExpr?, TStmt)
   KSBlock(Array[TStmt])
-  KSBreak(Int)
-  KSContinue(Int)
+  KSBreak(Int32)
+  KSContinue(Int32)
   KSDefer(TStmt)
   KSLabel(String, TStmt)
   KSGoto(String)
   KSGotoPtr(TExpr)
-  KSSwitch(TExpr, Array[(Int64, TStmt)], TStmt?, Int, TStmt)
+  KSSwitch(TExpr, Array[(Int64, TStmt)], TStmt?, Int32, TStmt)
   KSCaseMark(Array[Int64], Bool, TStmt)
-  KSDecl(String, CType, TExpr?, Int)
-  KSAggInit(String, CType, Array[(Int, TExpr, Int, Int)], Int)
+  KSDecl(String, CType, TExpr?, Int32)
+  KSAggInit(String, CType, Array[(Int32, TExpr, Int32, Int32)], Int32)
   KSEmpty
 }
 

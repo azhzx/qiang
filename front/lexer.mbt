@@ -185,14 +185,14 @@ pub fn is_keyword_mode(s : String, mode : StdMode) -> Bool {
 ///|
 priv struct Scanner {
   mut src : StringView
-  mut line : Int
-  mut col : Int
+  mut line : Int32
+  mut col : Int32
   mode : StdMode
   tagged_union : Bool
 }
 
 ///|
-fn Scanner::bump(self : Scanner, n : Int) -> Unit {
+fn Scanner::bump(self : Scanner, n : Int32) -> Unit {
   for _i in 0..<n {
     match self.src {
       ['\n', .. r] => {
@@ -475,7 +475,7 @@ fn hex16(v : UInt64) -> String {
 }
 
 ///|
-fn mk(kind : TokenKind, line : Int, col : Int, len? : Int = 0) -> Token {
+fn mk(kind : TokenKind, line : Int32, col : Int32, len~ : Int32 = 0) -> Token {
   { kind, line, col, len, }
 }
 
@@ -640,7 +640,7 @@ fn Scanner::next(self : Scanner) -> Token {
 pub fn tokenize(
   src : String,
   mode : StdMode,
-  tagged_union? : Bool = false,
+  tagged_union~ : Bool = false,
 ) -> Array[Token] {
   let sc = Scanner::{ src, line: 1, col: 1, mode, tagged_union, }
   let out : Array[Token] = []

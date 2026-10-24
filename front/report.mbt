@@ -1,6 +1,6 @@
 ///|
 /// Source line `line` (1-based) with its trailing newline removed.
-pub fn source_line(src : String, line : Int) -> String {
+pub fn source_line(src : String, line : Int32) -> String {
   if line <= 0 {
     return ""
   }
@@ -23,9 +23,9 @@ pub fn render_diag(
   src : String,
   severity : String,
   msg : String,
-  line : Int,
-  col : Int,
-  len : Int,
+  line : Int32,
+  col : Int32,
+  len : Int32,
 ) -> String {
   let loc = if display == "" {
     "line " + line.to_string() + ", column " + col.to_string()

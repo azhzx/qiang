@@ -8,18 +8,18 @@ pub(all) enum Severity {
 ///|
 pub struct Diag {
   sev : Severity
-  line : Int
-  col : Int
-  len : Int
+  line : Int32
+  col : Int32
+  len : Int32
   msg : String
 }
 
 ///|
 pub struct Diags {
   items : Array[Diag]
-  mut cur_line : Int
-  mut cur_col : Int
-  mut cur_len : Int
+  mut cur_line : Int32
+  mut cur_col : Int32
+  mut cur_len : Int32
 }
 
 ///|

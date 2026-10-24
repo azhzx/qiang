@@ -5,7 +5,7 @@
 // unrelated types, integers and pointers, signed and unsigned, narrowing, and
 // integers and floating point. --strict rejects the lossy ones, so that a
 // translation unit has to say what it means with an explicit cast.
-fn int_rank(t : CType) -> Int? {
+fn int_rank(t : CType) -> Int32? {
   match t {
     CBool => Some(0)
     CChar(_) => Some(1)
@@ -35,7 +35,7 @@ fn is_flt_ty(t : CType) -> Bool {
 }
 
 ///|
-fn flt_rank(t : CType) -> Int {
+fn flt_rank(t : CType) -> Int32 {
   match t {
     CFloat => 1
     CDouble => 2

@@ -8,7 +8,7 @@ priv struct Parser {
   src : String
   display : String
   toks : Array[Token]
-  mut pos : Int
+  mut pos : Int32
   typedefs : Map[String, Bool]
   // QPCC pseudo-templates: the instantiation names a declaration has already
   // defined, so a repeat can be dropped instead of building a second layout.
@@ -18,8 +18,8 @@ priv struct Parser {
   // `#pragma pack` state. QPCC has no preprocessor, so directives that survive
   // clang -E arrive as tokens; the parser applies the ones that affect layout
   // and stamps the active value onto every struct/union it parses.
-  mut pack : Int
-  pack_stack : Array[Int]
+  mut pack : Int32
+  pack_stack : Array[Int32]
 }
 
 ///|
@@ -34,7 +34,7 @@ fn Parser::peek(self : Parser) -> Token {
 }
 
 ///|
-fn Parser::peek_n(self : Parser, n : Int) -> Token {
+fn Parser::peek_n(self : Parser, n : Int32) -> Token {
   let i = self.pos + n
   if i < self.toks.length() {
     self.toks[i]
@@ -189,7 +189,7 @@ fn Parser::is_type_start(self : Parser) -> Bool {
 }
 
 ///|
-fn Parser::is_type_start_at(self : Parser, off : Int) -> Bool {
+fn Parser::is_type_start_at(self : Parser, off : Int32) -> Bool {
   match self.peek_n(off).kind {
     Keyword(k) =>
       is_basic_type_kw(k) ||
@@ -379,7 +379,7 @@ fn is_digits(s : String) -> Bool {
 }
 
 ///|
-fn digits_value(s : String) -> Int {
+fn digits_value(s : String) -> Int32 {
   let mut v = 0
   for c in s.to_array() {
     v = v * 10 + (c.to_int() - 48)
@@ -1133,7 +1133,7 @@ fn is_name_decl(d : Declarator) -> Bool {
 ///|
 /// The outer type constructor of a declarator is the AST node closest to the
 /// declared name.
-fn outer_kind(d : Declarator) -> Int {
+fn outer_kind(d : Declarator) -> Int32 {
   match d {
     DName(_) | DAbstract => 0
     DPointer(_, inner) =>
@@ -1446,7 +1446,7 @@ fn Parser::parse_cond_expr(self : Parser) -> Expr {
 }
 
 ///|
-fn binary_prec(p : String) -> Int {
+fn binary_prec(p : String) -> Int32 {
   match p {
     "||" => 1
     "&&" => 2
@@ -1463,7 +1463,7 @@ fn binary_prec(p : String) -> Int {
 }
 
 ///|
-fn Parser::parse_binary_expr(self : Parser, min_prec : Int) -> Expr {
+fn Parser::parse_binary_expr(self : Parser, min_prec : Int32) -> Expr {
   let mut lhs = self.parse_cast_expr()
   let mut go = true
   while go {
@@ -1963,9 +1963,9 @@ fn empty_declspec() -> DeclSpec {
 ///|
 pub fn parse(
   src : String,
-  mode? : StdMode = C11,
-  tagged_union? : Bool = false,
-  display? : String = "",
+  mode~ : StdMode = C11,
+  tagged_union~ : Bool = false,
+  display~ : String = "",
 ) -> TranslationUnit {
   // -std=cqe is C2y plus the QPCC extensions, so the tagged union is part of
   // the mode; -f_tagged_union still enables it on its own in the other modes.
