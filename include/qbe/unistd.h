@@ -54,6 +54,7 @@ int ftruncate(int, off_t);
 #define _SC_PAGESIZE 29
 #define _SC_NPROCESSORS_ONLN 58
 #define _SC_PHYS_PAGES 200
+#define _SC_CLK_TCK 3
 
 // BSD and macOS declare the getopt globals in <unistd.h>; lchat.c relies on
 // that and never includes <getopt.h>, so without these it sees `optarg` as

@@ -804,7 +804,9 @@ fn check_return(e : @front.Expr?, ctx : Ctx) -> TStmt {
   }
   match (ctx.ret_ty, te) {
     (Some(CVoid), Some(_)) =>
-      ctx.diags.error("return with a value in a void function")
+      // GCC and clang accept this as an extension (dash relies on it), so a
+      // warning rather than an error.
+      ctx.diags.warning("return with a value in a void function")
     _ => ()
   }
   { kind: KSReturn(te), }
