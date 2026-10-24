@@ -442,7 +442,7 @@ fn encode_designated(
 fn float_bits32(e : @front.Expr, ctx : Ctx) -> Int64 {
   match e {
     @front.EFloat(s) =>
-      parse_float_lit(s).to_float().reinterpret_as_uint().to_int64()
+      Float::from_double(parse_float_lit(s)).reinterpret_as_uint().to_int64()
     _ => const_eval_int(e, ctx)
   }
 }
