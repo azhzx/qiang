@@ -141,16 +141,25 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
           "int" => if base is None { base = Some(CInt(false)) }
           "char" => base = Some(CChar(true))
           "void" => base = Some(CVoid)
-          "_Float16" | "__fp16" => {
-            // C23 half precision. This port has no half type of its own, so it
-            // is accepted and treated as float. That is invisible for the
-            // common case - a prototype pulled in from a system header - but a
-            // real half-precision object would be the wrong size, hence the
-            // warning.
+          "_Float16" | "__fp16" | "__bf16" => {
+            // C23 half precision (__bf16 is the bfloat16 spelling clang uses in
+            // <arm_neon.h>). This port has no 16-bit float type, so it is
+            // accepted and treated as float. That is invisible for the common
+            // case - a typedef or a prototype pulled in from a system header -
+            // but a real half-precision object would be the wrong size, hence
+            // the warning.
             ctx.diags.warning(
-              "_Float16 is treated as float: this port has no half-precision type",
+              "half-precision type is treated as float: this port has no half type",
             )
             base = Some(CFloat)
+          }
+          // __mfp8 (ARM FP8) is one byte; map it to an 8-bit integer so a
+          // typedef of it keeps the right size.
+          "__mfp8" => {
+            ctx.diags.warning(
+              "__mfp8 is treated as char: this port has no FP8 type",
+            )
+            base = Some(CChar(false))
           }
           "float" => base = Some(CFloat)
           "double" => base = Some(CDouble)
