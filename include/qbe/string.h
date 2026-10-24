@@ -1,6 +1,11 @@
 #ifndef __QPCC_QBE_STRING_H
 #define __QPCC_QBE_STRING_H
 
+#ifndef NULL
+#define NULL ((void *)0)
+#endif
+
+
 #include <stddef.h>
 void *memcpy(void *, void *, size_t);
 void *memmove(void *, void *, size_t);

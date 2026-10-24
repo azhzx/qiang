@@ -1,5 +1,10 @@
 #ifndef __QPCC_QBE_UNISTD_H
 #define __QPCC_QBE_UNISTD_H
+
+#ifndef NULL
+#define NULL ((void *)0)
+#endif
+
 #define STDIN_FILENO 0
 #define STDOUT_FILENO 1
 #define STDERR_FILENO 2

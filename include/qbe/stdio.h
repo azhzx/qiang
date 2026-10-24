@@ -1,6 +1,11 @@
 #ifndef __QPCC_QBE_STDIO_H
 #define __QPCC_QBE_STDIO_H
 
+#ifndef NULL
+#define NULL ((void *)0)
+#endif
+
+
 #include <stddef.h>
 typedef struct _IO_FILE FILE;
 extern FILE *__stdinp;
