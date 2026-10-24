@@ -1,5 +1,5 @@
 ///|
-// QPCC closures.
+// Qiang closures.
 //
 // A _Lambda expression builds a two-word value { fn, env }:
 //

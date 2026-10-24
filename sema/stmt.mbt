@@ -272,7 +272,7 @@ fn check_local_decl(
             value: 0L,
           })
         } else if ty is CVoid && ctx.mode == @front.Cqe {
-          // QPCC extension: `void x = f();` declares no object. The
+          // Qiang extension: `void x = f();` declares no object. The
           // initializer is evaluated for its side effects and its value
           // discarded, exactly as if the expression had been written as a
           // statement of its own. `void x;` has nothing to evaluate and stays
@@ -287,7 +287,7 @@ fn check_local_decl(
           }
         } else if ty is CVoid {
           // Plain C has no object of type void; the declaration form above is
-          // the QPCC extension and needs -std=cqe.
+          // the Qiang extension and needs -std=cqe.
           ctx.diags.error(
             "variable '" +
             n +

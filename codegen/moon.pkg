@@ -1,5 +1,5 @@
 import {
   "azhzx/qbe/ir_builder",
   "azhzx/qbe/types",
-  "azhzx/qbe/qpcc/sema",
+  "azhzx/qiang/sema",
 }

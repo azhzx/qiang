@@ -1252,7 +1252,7 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int32 {
         c.load_scalar(e.ty, addr)
       }
     }
-    @sema.TUnsupported(_) => abort("qpcc: unsupported expression")
+    @sema.TUnsupported(_) => abort("Qiang: unsupported expression")
   }
 }
 
@@ -1620,7 +1620,7 @@ fn arith_op(op : String, cls : @types.Class, uns : Bool) -> @types.Op {
     "^" => @types.Xor
     "<<" => @types.Shl
     ">>" => if uns { @types.Shr } else { @types.Sar }
-    _ => abort("qpcc: unknown binary operator " + op)
+    _ => abort("Qiang: unknown binary operator " + op)
   }
 }
 
@@ -1634,7 +1634,7 @@ fn cmp_op(op : String, cls : @types.Class, uns : Bool, fl : Bool) -> @types.Op {
       "<=" => if cls == @types.Kd { @types.Cled } else { @types.Cles }
       ">" => if cls == @types.Kd { @types.Cgtd } else { @types.Cgts }
       ">=" => if cls == @types.Kd { @types.Cged } else { @types.Cges }
-      _ => abort("qpcc: unknown comparison " + op)
+      _ => abort("Qiang: unknown comparison " + op)
     }
   } else {
     let l = cls == @types.Kl
@@ -1689,7 +1689,7 @@ fn cmp_op(op : String, cls : @types.Class, uns : Bool, fl : Bool) -> @types.Op {
         } else {
           @types.Csgew
         }
-      _ => abort("qpcc: unknown comparison " + op)
+      _ => abort("Qiang: unknown comparison " + op)
     }
   }
 }
@@ -2009,7 +2009,7 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
         Some(e) => {
           let a = match c.locals.get(name) {
             Some(x) => x
-            None => abort("qpcc: unbound local " + name)
+            None => abort("Qiang: unbound local " + name)
           }
           if is_complex_ty(ty) && !is_composite(e.ty) {
             let elem = elem_of(ty)
@@ -2041,7 +2041,7 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
     @sema.KSAggInit(name, ty, items, _) => {
       let base = match c.locals.get(name) {
         Some(x) => x
-        None => abort("qpcc: unbound local " + name)
+        None => abort("Qiang: unbound local " + name)
       }
       c.zero_mem(base, size_of(ty, c.layouts))
       for entry in items {
@@ -2228,7 +2228,7 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
       )
       let blk = match c.labels.get(n) {
         Some(b) => b
-        None => abort("qpcc: unknown label " + n)
+        None => abort("Qiang: unknown label " + n)
       }
       c.b.jmp(c.fid, blk, [])
       c.open = false
@@ -2313,7 +2313,7 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
         }
         let blk = match c.labels.get(n) {
           Some(x) => x
-          None => abort("qpcc: unknown label " + n)
+          None => abort("Qiang: unknown label " + n)
         }
         if c.b.current_block(c.fid) != blk {
           if c.open {
@@ -2437,7 +2437,7 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
       c.local_ty.set(n, ty)
     }
   }
-  // QPCC closures: the captures are not locals of this function - they live in
+  // Qiang closures: the captures are not locals of this function - they live in
   // the environment the hidden first parameter points at, so each name is
   // bound to its field's address instead of to a fresh slot.
   match f.closure {
@@ -2521,7 +2521,7 @@ pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
   let b = @ir_builder.Builder::new()
   let strs : Array[String] = []
   for i in 0..<p.strings.length() {
-    let label = "qpcc_str_" + i.to_string()
+    let label = "qiang_str_" + i.to_string()
     b.data_string(label, false, p.strings[i] + "\\0")
     strs.push(label)
   }
@@ -2564,7 +2564,7 @@ pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
         match r {
           @sema.RGlobal(t, k) => b.data_ref_item(t, k.to_int64())
           @sema.RString(idx, k) =>
-            b.data_ref_item("qpcc_str_" + idx.to_string(), k.to_int64())
+            b.data_ref_item("qiang_str_" + idx.to_string(), k.to_int64())
         }
         pos = pos + 8
       }

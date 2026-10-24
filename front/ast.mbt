@@ -39,7 +39,7 @@ pub(all) enum TypeSpec {
   // point the specifier was written; see Parser::try_pragma.
   TStruct(String?, Array[StructDecl], Int32)
   TUnion(String?, Array[StructDecl], Int32)
-  // QPCC -f_tagged_union: _Tagged_union Tag { members }. The tag is a
+  // Qiang -f_tagged_union: _Tagged_union Tag { members }. The tag is a
   // synthetic int at offset 0, the members overlap after it.
   TTaggedUnion(String?, Array[StructDecl])
   // tag, enumerators, C23 fixed underlying type (default int)
@@ -49,15 +49,15 @@ pub(all) enum TypeSpec {
   TTypeofType(DeclSpec, Declarator)
   TAtomicSpec(DeclSpec, Declarator)
   TBitInt(Expr)
-  // QPCC: `_Function_pointer T (params)` is the prefix spelling of the
+  // Qiang: `_Function_pointer T (params)` is the prefix spelling of the
   // function pointer type `T (*)(params)`: the return type and the parameter
   // list are written in the order they are read.
   TFuncPtr(DeclSpec, Array[ParamDecl], Bool)
-  // QPCC: a bare `_Function_pointer` is the storage type for any function
+  // Qiang: a bare `_Function_pointer` is the storage type for any function
   // pointer (N3914's `_Any_func*`). It converts to and from every function
   // pointer type and to and from `void *`, but it cannot be called.
   TFuncPtrAny
-  // QPCC closures: the written closure type `_Lambda T (params)`.
+  // Qiang closures: the written closure type `_Lambda T (params)`.
   TClosure(DeclSpec, Array[ParamDecl], Bool)
 }
 
@@ -91,7 +91,7 @@ pub struct ParamDecl {
 }
 
 ///|
-/// QPCC closures: one entry of a `_Lambda(...)` capture list. `&x` captures
+/// Qiang closures: one entry of a `_Lambda(...)` capture list. `&x` captures
 /// the variable itself (the environment stores its address), a bare `x`
 /// captures its current value.
 pub struct Capture {
@@ -212,7 +212,7 @@ pub(all) enum Expr {
   ECountofExpr(Expr)
   ECountofType(DeclSpec, Declarator)
   EAlignofExpr(Expr)
-  // QPCC -f_tagged_union: runtime tag and compile-time discriminator.
+  // Qiang -f_tagged_union: runtime tag and compile-time discriminator.
   EDynamicTag(Expr)
   EStaticTag(DeclSpec, Declarator, String)
   ETypesCompatible(DeclSpec, Declarator, DeclSpec, Declarator)
@@ -225,9 +225,9 @@ pub(all) enum Expr {
   EStmtExpr(Array[BlockItem])
   EOffsetof(DeclSpec, Declarator, Array[Designator])
   EVaArg(Expr, DeclSpec, Declarator)
-  // QPCC closures: `_Lambda(a, &b) T (params) { body }`.
+  // Qiang closures: `_Lambda(a, &b) T (params) { body }`.
   ELambda(Array[Capture], DeclSpec, Array[ParamDecl], Bool, Stmt)
-  // QPCC closures: `_Closure_environment(e)`, the captured environment.
+  // Qiang closures: `_Closure_environment(e)`, the captured environment.
   EClosureEnv(Expr)
   ETemp
 }

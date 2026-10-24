@@ -635,7 +635,7 @@ fn tag_of(layout : Layout, name : String) -> Int64? {
 }
 
 ///|
-// QPCC -f_tagged_union: does this lvalue go through a tagged-union member?
+// Qiang -f_tagged_union: does this lvalue go through a tagged-union member?
 fn has_tagged_member(e : TExpr) -> Bool {
   match e.kind {
     TTaggedMember(_, _, _) => true
@@ -705,7 +705,7 @@ fn check_call(
   match callee {
     @front.EIdent(n) =>
       if ctx.scopes.lookup(n) is None {
-        // C99 removed implicit declarations. QPCC still accepts them, because
+        // C99 removed implicit declarations. Qiang still accepts them, because
         // its own self-host build relies on the non-variadic libc helpers the
         // QBE sources call without a prototype, but a call without a prototype
         // to a genuinely variadic callee (printf and friends) has to use the
@@ -753,7 +753,7 @@ fn check_call(
   let tc = check_expr(callee, ctx)
   let targs : Array[TExpr] = []
   let fty = decay(tc.ty)
-  // QPCC closures: a call goes through the pair, with the environment passed
+  // Qiang closures: a call goes through the pair, with the environment passed
   // as the hidden leading argument.
   match fty {
     CClosure(r, ps, env) => {

@@ -1,13 +1,13 @@
 ///|
-/// QPCC driver.
+/// Qiang driver.
 ///
 /// Usage:
-///   qpcc <input.c> [-o out.o] [--emit obj|asm|qbe] [-std=c11|c23] [--check]
-///   qpcc run [-std=...] [-I dir]... [-D name[=v]]... <input.c> [-- args...]
+///   Qiang <input.c> [-o out.o] [--emit obj|asm|qbe] [-std=c11|c23] [--check]
+///   Qiang run [-std=...] [-I dir]... [-D name[=v]]... <input.c> [-- args...]
 ///
 /// Without \`run\` the C preprocessor is external: run clang -E first when the
 /// input uses #include/#define beyond simple directives (plain # lines are
-/// stripped here). \`qpcc run\` drives clang for the preprocessing and the
+/// stripped here). \`Qiang run\` drives clang for the preprocessing and the
 /// linking, so an ordinary C file can be compiled and executed in one step.
 
 ///|
@@ -20,10 +20,10 @@ fn eprint(s : String) -> Unit {
 ///|
 fn usage() -> Unit {
   eprint(
-    "usage: qpcc <input.c> [-o out.o] [--emit obj|asm|qbe] [-std=c11|c23|c2y] [--check] [-f_tagged_union]",
+    "usage: Qiang <input.c> [-o out.o] [--emit obj|asm|qbe] [-std=c11|c23|c2y] [--check] [-f_tagged_union]",
   )
   eprint(
-    "       qpcc run [-std=c11|c23|c2y] [-f_tagged_union] [-I dir] [-D name[=v]] <input.c> [-- args...]",
+    "       Qiang run [-std=c11|c23|c2y] [-f_tagged_union] [-I dir] [-D name[=v]] <input.c> [-- args...]",
   )
 }
 
@@ -31,7 +31,7 @@ fn usage() -> Unit {
 fn strip_directives(src : String) -> String {
   let sb = StringBuilder::new()
   for line in src.split("\n") {
-    // QPCC has no preprocessor: #pragma pack changes the layout of the
+    // Qiang has no preprocessor: #pragma pack changes the layout of the
     // structs after it, so the line is kept for the parser. Every other
     // directive is still blanked, which keeps diagnostic line numbers.
     if line.has_prefix("#pragma") {
@@ -64,7 +64,7 @@ fn shell_quote(s : String) -> String {
 
 ///|
 /// Read, parse and check one input, reporting diagnostics and aborting on
-/// errors. Shared by the plain compile path and \`qpcc run\`.
+/// errors. Shared by the plain compile path and \`Qiang run\`.
 fn front_end(
   input : String,
   display : String,
@@ -74,7 +74,7 @@ fn front_end(
 ) -> @sema.CheckedProgram? {
   let src = @fs.read_file_to_string(input) catch {
     _ => {
-      eprint("qpcc: cannot read " + display)
+      eprint("Qiang: cannot read " + display)
       return None
     }
   }
@@ -115,7 +115,7 @@ fn front_end(
     }
   }
   if errs > 0 {
-    eprint("qpcc: " + errs.to_string() + " error(s)")
+    eprint("Qiang: " + errs.to_string() + " error(s)")
     return None
   }
   Some(prog)
@@ -126,7 +126,7 @@ fn emit_object(b : @ir_builder.Builder) -> Bytes {
   b.emit_object() catch {
     e =>
       abort(
-        "qpcc: object emission failed: " +
+        "Qiang: object emission failed: " +
         (match e {
           @util.QbeError::CompileError(m) => m
           @util.QbeError::Ice(m) => "ICE: " + m
@@ -137,18 +137,18 @@ fn emit_object(b : @ir_builder.Builder) -> Bytes {
 }
 
 ///|
-/// Where the hand-written headers live. \`qpcc run\` appends this to the
+/// Where the hand-written headers live. \`Qiang run\` appends this to the
 /// preprocessor command line so \`#include <stddefer.h>\` and friends resolve;
-/// set QPCC_INCLUDE to override, or pass -I yourself.
-fn qpcc_include_dir() -> String? {
+/// set qiang_INCLUDE to override, or pass -I yourself.
+fn qiang_include_dir() -> String? {
   let cands : Array[String] = []
-  match @env.get_env_var("QPCC_INCLUDE") {
+  match @env.get_env_var("qiang_INCLUDE") {
     Some(d) => cands.push(d)
     None => ()
   }
-  cands.push("qpcc/include/qbe")
+  cands.push("Qiang/include/qbe")
   cands.push("include/qbe")
-  cands.push("../qpcc/include/qbe")
+  cands.push("../Qiang/include/qbe")
   for c in cands {
     let probe = @fs.read_file_to_string(c + "/stddefer.h") catch { _ => "" }
     if probe != "" {
@@ -170,13 +170,13 @@ fn ptr_conv_macros() -> String {
 }
 
 ///|
-/// \`qpcc run\`: preprocess with clang, compile with QPCC, link with clang and
+/// \`Qiang run\`: preprocess with clang, compile with Qiang, link with clang and
 /// run, forwarding the program's exit status.
 fn run_subcommand(args : Array[String]) -> Unit {
   if @native.mbt_native_run(@native.cstr("command -v clang >/dev/null 2>&1")) !=
     0 {
     eprint(
-      "qpcc run: clang is required (it does the preprocessing and the linking) but was not found on PATH; install clang and retry",
+      "Qiang run: clang is required (it does the preprocessing and the linking) but was not found on PATH; install clang and retry",
     )
     @native.mbt_native_exit(1)
   }
@@ -218,7 +218,7 @@ fn run_subcommand(args : Array[String]) -> Unit {
       } else if a == "-I" || a == "-D" || a == "-U" {
         // The separated form: the flag and its value are two arguments.
         if i + 1 >= args.length() {
-          eprint("qpcc run: " + a + " needs a value")
+          eprint("Qiang run: " + a + " needs a value")
           @native.mbt_native_exit(1)
         }
         clang_flags.push(a + args[i + 1])
@@ -226,7 +226,7 @@ fn run_subcommand(args : Array[String]) -> Unit {
       } else if a.has_prefix("-I") || a.has_prefix("-D") || a.has_prefix("-U") {
         clang_flags.push(a)
       } else if a.has_prefix("-") {
-        eprint("qpcc run: unknown option " + a)
+        eprint("Qiang run: unknown option " + a)
         @native.mbt_native_exit(1)
       } else {
         input = a
@@ -238,10 +238,10 @@ fn run_subcommand(args : Array[String]) -> Unit {
   }
   if input == "" {
     usage()
-    eprint("qpcc run: no input file")
+    eprint("Qiang run: no input file")
     @native.mbt_native_exit(1)
   }
-  // A .cqe file is C with the QPCC extensions on, so the suffix picks the mode
+  // A .cqe file is C with the Qiang extensions on, so the suffix picks the mode
   // when no -std was given.
   if std_flag == "" && input.has_suffix(".cqe") {
     mode = @front.Cqe
@@ -251,9 +251,9 @@ fn run_subcommand(args : Array[String]) -> Unit {
   let o_path = @native.tmp_path(".o")
   let exe_path = @native.tmp_path("")
   // clang has no -std=cqe, so the preprocessing step uses the C2y spelling;
-  // only QPCC needs to know that the QPCC extensions are on.
+  // only Qiang needs to know that the Qiang extensions are on.
   let clang_std = if std_flag == "-std=cqe" { "-std=c2y" } else { std_flag }
-  // QPCC does not implement Blocks, so preprocess the way a compiler without
+  // Qiang does not implement Blocks, so preprocess the way a compiler without
   // them would: Apple's headers guard every block declaration with
   // `__BLOCKS__`, and clang defines it. Leaving it defined made the front end
   // parse `(^)(...)` declarations from <sys/dirent.h> and fail.
@@ -261,7 +261,7 @@ fn run_subcommand(args : Array[String]) -> Unit {
   if clang_std != "" {
     pp = pp + clang_std + " "
   }
-  // N3914's convertibility macros. They are QPCC's, and clang has no idea
+  // N3914's convertibility macros. They are Qiang's, and clang has no idea
   // about them, so the driver has to define them for the preprocessing step.
   if mode == @front.C2y || mode == @front.Cqe {
     pp = pp + ptr_conv_macros()
@@ -269,7 +269,7 @@ fn run_subcommand(args : Array[String]) -> Unit {
   for f in clang_flags {
     pp = pp + shell_quote(f) + " "
   }
-  match qpcc_include_dir() {
+  match qiang_include_dir() {
     Some(d) => pp = pp + "-I " + shell_quote(d) + " "
     None => ()
   }
@@ -279,33 +279,33 @@ fn run_subcommand(args : Array[String]) -> Unit {
   }
   pp = pp + shell_quote(input) + " -o " + shell_quote(i_path)
   if @native.mbt_native_run(@native.cstr(pp)) != 0 {
-    eprint("qpcc run: preprocessing failed")
+    eprint("Qiang run: preprocessing failed")
     @native.mbt_native_exit(1)
   }
   let prog = match front_end(i_path, input, mode, tagged_union, strict~) {
     Some(p) => p
     None => {
       @native.mbt_native_exit(1)
-      abort("qpcc run: cannot continue")
+      abort("Qiang run: cannot continue")
     }
   }
   let b = @codegen.compile_program(prog) catch {
     _ => {
-      eprint("qpcc: codegen failed")
+      eprint("Qiang: codegen failed")
       @native.mbt_native_exit(1)
-      abort("qpcc run: cannot continue")
+      abort("Qiang run: cannot continue")
     }
   }
   @native.write_file(o_path, emit_object(b)) catch {
     _ => {
-      eprint("qpcc run: cannot write the temporary object")
+      eprint("Qiang run: cannot write the temporary object")
       @native.mbt_native_exit(1)
-      abort("qpcc run: cannot continue")
+      abort("Qiang run: cannot continue")
     }
   }
   let link = "clang " + shell_quote(o_path) + " -o " + shell_quote(exe_path)
   if @native.mbt_native_run(@native.cstr(link)) != 0 {
-    eprint("qpcc run: linking failed")
+    eprint("Qiang run: linking failed")
     @native.mbt_native_exit(1)
   }
   let mut cmd = shell_quote(exe_path)
@@ -357,7 +357,7 @@ fn main {
         i = i + 2
         continue
       }
-      abort("qpcc: -o needs a path")
+      abort("Qiang: -o needs a path")
     } else if a == "--emit" {
       if i + 1 < args.length() {
         emit = args[i + 1]
@@ -389,13 +389,13 @@ fn main {
     usage()
     return
   }
-  // A .cqe file is C with the QPCC extensions on (see the run path).
+  // A .cqe file is C with the Qiang extensions on (see the run path).
   let mode = if input.has_suffix(".cqe") { @front.Cqe } else { mode }
   let prog = match front_end(input, input, mode, tagged_union, strict~) {
     Some(p) => p
     None => {
       @native.mbt_native_exit(1)
-      abort("qpcc: cannot continue")
+      abort("Qiang: cannot continue")
     }
   }
   if check_only {
@@ -403,29 +403,29 @@ fn main {
     return
   }
   let b = @codegen.compile_program(prog) catch {
-    _ => abort("qpcc: codegen failed")
+    _ => abort("Qiang: codegen failed")
   }
   if emit == "asm" {
     // Surface the underlying error: abort() prints only "PanicError", which
     // made an ICE here indistinguishable from a crash.
     let asm = b.emit_asm() catch {
       @util.QbeError::Ice(msg) => {
-        eprintln("qpcc: asm emission ICE: " + msg)
+        eprintln("Qiang: asm emission ICE: " + msg)
         @native.mbt_native_exit(1)
         ""
       }
       @util.QbeError::CompileError(msg) => {
-        eprintln("qpcc: asm emission failed: " + msg)
+        eprintln("Qiang: asm emission failed: " + msg)
         @native.mbt_native_exit(1)
         ""
       }
       @util.QbeError::ParseError(_f, _l, msg) => {
-        eprintln("qpcc: asm emission failed: " + msg)
+        eprintln("Qiang: asm emission failed: " + msg)
         @native.mbt_native_exit(1)
         ""
       }
       _ => {
-        eprintln("qpcc: asm emission failed")
+        eprintln("Qiang: asm emission failed")
         @native.mbt_native_exit(1)
         ""
       }
@@ -439,6 +439,6 @@ fn main {
   }
   let out = if output == "" { input + ".o" } else { output }
   @fs.write_bytes_to_file(out, emit_object(b)) catch {
-    _ => abort("qpcc: cannot write " + out)
+    _ => abort("Qiang: cannot write " + out)
   }
 }

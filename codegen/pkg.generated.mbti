@@ -1,9 +1,9 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "azhzx/qbe/qpcc/codegen"
+package "azhzx/qiang/codegen"
 
 import {
   "azhzx/qbe/ir_builder",
-  "azhzx/qbe/qpcc/sema",
+  "azhzx/qiang/sema",
 }
 
 // Values

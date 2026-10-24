@@ -21,10 +21,10 @@ pub(all) enum CType {
   CUnion(Int32)
   CEnum(Int32)
   CBitInt(Int32)
-  // QPCC/N3914: the `_Any_func` function type. It never appears on its own;
+  // Qiang/N3914: the `_Any_func` function type. It never appears on its own;
   // `_Function_pointer` is the pointer to it, which is the storage type.
   CAnyFunc
-  // QPCC closures: a two-word { function pointer, environment pointer } value.
+  // Qiang closures: a two-word { function pointer, environment pointer } value.
   // The Int is the layout of the captured environment, or -1 for the written
   // type `_Lambda T (params)` where no environment is known yet.
   CClosure(CType, Array[CType], Int32)

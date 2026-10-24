@@ -13,7 +13,7 @@ pub(all) enum TExprKind {
   TCond(TExpr, TExpr, TExpr)
   TCast(TExpr)
   TMember(TExpr, Int32)
-  // QPCC -f_tagged_union payload member: address is base + off, and a
+  // Qiang -f_tagged_union payload member: address is base + off, and a
   // store through it also writes the discriminator `tag` at base + 0.
   TTaggedMember(TExpr, Int32, Int64)
   TBitField(TExpr, Int32, Int32, Int32)
@@ -27,11 +27,11 @@ pub(all) enum TExprKind {
   TStmtExpr(Array[TStmt])
   TCompoundLit(Array[(Int32, TExpr, Int32, Int32)])
   TVaArg(TExpr)
-  // QPCC closures: build the { fn, env } pair. The String is the hidden
+  // Qiang closures: build the { fn, env } pair. The String is the hidden
   // function, the Int the environment layout, and each triple is a captured
   // field (offset, source variable, captured by reference).
   TLambda(String, Int32, Array[(Int32, TExpr, Bool)])
-  // QPCC closures: the environment pointer of a closure value.
+  // Qiang closures: the environment pointer of a closure value.
   TClosureEnv(TExpr)
   TUnsupported(String)
 }
@@ -100,7 +100,7 @@ pub struct CheckedGlobal {
 ///|
 
 ///|
-/// QPCC closures: one captured variable of a synthesized closure function.
+/// Qiang closures: one captured variable of a synthesized closure function.
 /// The name is bound to the environment field at `off`, so a by-value capture
 /// reads and writes its copy and a by-reference capture holds the pointer.
 pub struct ClosureCapture {
@@ -110,7 +110,7 @@ pub struct ClosureCapture {
 }
 
 ///|
-/// QPCC closures: what a synthesized closure function needs on top of an
+/// Qiang closures: what a synthesized closure function needs on top of an
 /// ordinary function - the hidden first parameter holding the environment.
 pub struct ClosureInfo {
   self_name : String

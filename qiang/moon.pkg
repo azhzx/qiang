@@ -1,8 +1,8 @@
 import {
-  "azhzx/qbe/qpcc/front",
-  "azhzx/qbe/qpcc/sema",
+  "azhzx/qiang/front",
+  "azhzx/qiang/sema",
   "azhzx/qbe/util",
-  "azhzx/qbe/qpcc/codegen",
+  "azhzx/qiang/codegen",
   "azhzx/qbe/native",
   "azhzx/qbe/ir_builder",
   "moonbitlang/core/env",

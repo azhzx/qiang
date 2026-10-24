@@ -2,7 +2,7 @@
 /// Sema context: scopes, layouts and diagnostics.
 pub struct Ctx {
   scopes : ScopeStack
-  // The language mode. Only the QPCC-only relaxations consult it: the lexer
+  // The language mode. Only the Qiang-only relaxations consult it: the lexer
   // has already decided which words are keywords.
   mode : @front.StdMode
   // --strict: reject the conversions C performs silently.

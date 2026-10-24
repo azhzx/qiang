@@ -1,5 +1,5 @@
 // Generated using `moon info`, DON'T EDIT IT
-package "azhzx/qbe/qpcc/front"
+package "azhzx/qiang/front"
 
 import {
   "moonbitlang/core/debug",
@@ -14,7 +14,7 @@ pub fn is_keyword(String) -> Bool
 
 pub fn is_keyword_mode(String, StdMode) -> Bool
 
-pub fn is_qpcc_keyword(String) -> Bool
+pub fn is_qiang_keyword(String) -> Bool
 
 pub fn is_tagged_keyword(String) -> Bool
 

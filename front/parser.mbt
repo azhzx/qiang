@@ -10,12 +10,12 @@ priv struct Parser {
   toks : Array[Token]
   mut pos : Int32
   typedefs : Map[String, Bool]
-  // QPCC pseudo-templates: the instantiation names a declaration has already
+  // Qiang pseudo-templates: the instantiation names a declaration has already
   // defined, so a repeat can be dropped instead of building a second layout.
   template_defs : Map[String, Bool]
   mode : StdMode
   tagged_union : Bool
-  // `#pragma pack` state. QPCC has no preprocessor, so directives that survive
+  // `#pragma pack` state. Qiang has no preprocessor, so directives that survive
   // clang -E arrive as tokens; the parser applies the ones that affect layout
   // and stamps the active value onto every struct/union it parses.
   mut pack : Int32
@@ -445,9 +445,9 @@ fn Parser::try_pragma(self : Parser) -> Bool {
 }
 
 ///|
-// QPCC extension: a trailing comma is accepted before the closing delimiter of
+// Qiang extension: a trailing comma is accepted before the closing delimiter of
 // a comma separated list. Plain C only allows it in initialiser lists and enum
-// bodies; qpcc also accepts it in call arguments, parameter lists, _Generic
+// bodies; Qiang also accepts it in call arguments, parameter lists, _Generic
 // associations and attribute arguments.
 fn Parser::at_list_close(self : Parser) -> Bool {
   match self.peek().kind {
@@ -469,9 +469,9 @@ fn Parser::eat_list_close(self : Parser) -> Bool {
 }
 
 ///|
-// QPCC extension (N3458, "Clearer C/C++ Headers Boilerplate with extern
+// Qiang extension (N3458, "Clearer C/C++ Headers Boilerplate with extern
 // Blocks"): extern "C" { ... } groups declarations that have C language
-// linkage, and extern {} with no string is the same thing. qpcc has a single
+// linkage, and extern {} with no string is the same thing. Qiang has a single
 // language, so a block is only a grouping: it is parsed and flattened into the
 // surrounding declarations. extern "C++" is accepted and treated like extern
 // "C" - there is no second language to switch to.
@@ -1861,11 +1861,11 @@ fn Parser::parse_primary_expr(self : Parser) -> Expr {
       EString(parts)
     }
     Ident(n) => {
-      if self.mode == C2y && is_qpcc_keyword(n) {
+      if self.mode == C2y && is_qiang_keyword(n) {
         self.fail(
           "'" +
           n +
-          "' is a QPCC extension and -std=c2y leaves it an ordinary identifier; compile with -std=cqe",
+          "' is a Qiang extension and -std=c2y leaves it an ordinary identifier; compile with -std=cqe",
         )
       }
       // An instantiation followed by a braced initializer is a compound
@@ -1896,7 +1896,7 @@ fn Parser::parse_primary_expr(self : Parser) -> Expr {
       ENullptr
     }
     Keyword("_Lambda") => {
-      // QPCC closures: [_Lambda(a, &b)] T (params) { body }. The capture list
+      // Qiang closures: [_Lambda(a, &b)] T (params) { body }. The capture list
       // is optional, so a closure that captures nothing reads like the type.
       self.pos = self.pos + 1
       let caps : Array[Capture] = []
@@ -1923,7 +1923,7 @@ fn Parser::parse_primary_expr(self : Parser) -> Expr {
       ELambda(caps, ret, params, va, body)
     }
     Keyword("_Closure_environment") => {
-      // QPCC closures: the environment stored in a closure value.
+      // Qiang closures: the environment stored in a closure value.
       self.pos = self.pos + 1
       self.expect_punct("(")
       let e = self.parse_expr()
@@ -1967,7 +1967,7 @@ pub fn parse(
   tagged_union~ : Bool = false,
   display~ : String = "",
 ) -> TranslationUnit {
-  // -std=cqe is C2y plus the QPCC extensions, so the tagged union is part of
+  // -std=cqe is C2y plus the Qiang extensions, so the tagged union is part of
   // the mode; -f_tagged_union still enables it on its own in the other modes.
   let tagged = tagged_union || mode == Cqe
   let toks = tokenize(src, mode, tagged_union=tagged)

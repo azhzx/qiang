@@ -1,8 +1,8 @@
-# QPCC — the Qopple C compiler
+# Qiang — the Qopple C compiler
 
-QPCC is the C11 front end and code generator that targets the qbe.mbt IR
+Qiang is the C11 front end and code generator that targets the qbe.mbt IR
 builder. It is the only C compiler in this repository: the historical
-parser/codegen that lived directly in `qpcc/` has been removed.
+parser/codegen that lived directly in `Qiang/` has been removed.
 
 ## Pipeline
 
@@ -13,33 +13,33 @@ source.c --(clang -E)--> tokens --(front)--> AST
 
 | Package | Role |
 | --- | --- |
-| `qpcc/front` | lexer, surface AST, full C11 + GNU-extension parser (`-std=c11|c23`) |
-| `qpcc/sema` | name resolution, types, layout, constant evaluation, diagnostics |
-| `qpcc/codegen` | lowers the checked AST onto `ir_builder` |
-| `qpcc/cmd` | driver CLI |
+| `Qiang/front` | lexer, surface AST, full C11 + GNU-extension parser (`-std=c11|c23`) |
+| `Qiang/sema` | name resolution, types, layout, constant evaluation, diagnostics |
+| `Qiang/codegen` | lowers the checked AST onto `ir_builder` |
+| `Qiang/cmd` | driver CLI |
 
 ## Usage
 
 ```sh
-moon build --target native qpcc/cmd
+moon build --target native Qiang/cmd
 
 # one step: preprocess, compile, link and run
-qpcc run hello.c [-- args...]
+Qiang run hello.c [-- args...]
 
 # or drive the pieces yourself
-qpcc input.c -o input.o [--emit obj|asm|qbe] [-std=c11|c23|c2y] [--check]
+Qiang input.c -o input.o [--emit obj|asm|qbe] [-std=c11|c23|c2y] [--check]
 clang input.o -o a.out
 ```
 
-`qpcc run` drives clang for the parts QPCC does not own: it preprocesses with
+`Qiang run` drives clang for the parts Qiang does not own: it preprocesses with
 `clang -E -P` (so `#include`/`#define` work and the headers under
-`qpcc/include/qbe/` are found when run from the repository root; `QPCC_INCLUDE`
-overrides that), compiles with QPCC, links with clang, runs the program and
+`Qiang/include/qbe/` are found when run from the repository root; `Qiang_INCLUDE`
+overrides that), compiles with Qiang, links with clang, runs the program and
 forwards its exit status. `-I`/`-D`/`-U` go to the preprocessor and everything
 after `--` goes to the program. It needs clang on PATH and says so if it is
 missing.
 
-Without `run` the C preprocessor is external: run `clang -E -P` before `qpcc`
+Without `run` the C preprocessor is external: run `clang -E -P` before `Qiang`
 when the input uses `#include`/`#define`. Plain `#` lines are stripped by the
 driver for convenience.
 
@@ -99,7 +99,7 @@ Known limitations:
 - `char8_t` is treated as a built-in type name rather than the `<uchar.h>`
   typedef, so it cannot be shadowed.
 - The feature matrix (status per construct, with the oracle fixtures that
-  cover each) is in `../doc/qpcc.md`.
+  cover each) is in `../doc/Qiang.md`.
 
 ## C2y status
 
@@ -118,25 +118,25 @@ Supported:
   its enclosing block is left, in reverse order, on any exit (falling off
   the end, `return`, `break`, `continue`, `goto` out). A jump that would
   leave the `_Defer` statement itself, and a `goto` into it, are diagnosed.
-The QPCC-only keywords are not part of this mode: see `-std=cqe` below.
+The Qiang-only keywords are not part of this mode: see `-std=cqe` below.
 
 The friendly spellings live in hand-written headers under
-`qpcc/include/qbe/`:
+`Qiang/include/qbe/`:
 
 | Header | Macro |
 | --- | --- |
 | `stdcountof.h` | `countof` -> `_Countof` (N3469) |
 | `stddefer.h` | `defer` -> `_Defer` (TS 25755) |
-| `stdmaxof.h` | `maxof` -> `_Maxof` (QPCC extension) |
-| `stdminof.h` | `minof` -> `_Minof` (QPCC extension) |
-| `taggedunion.h` | `tagunion` -> `_Tagged_union`, `static_tag` -> `_Static_tag`, `dynamic_tag` -> `_Dynamic_tag` (QPCC extension) |
+| `stdmaxof.h` | `maxof` -> `_Maxof` (Qiang extension) |
+| `stdminof.h` | `minof` -> `_Minof` (Qiang extension) |
+| `taggedunion.h` | `tagunion` -> `_Tagged_union`, `static_tag` -> `_Static_tag`, `dynamic_tag` -> `_Dynamic_tag` (Qiang extension) |
 | `function_pointer.h` | `function_pointer` -> `_Function_pointer` (N3914) |
-| `lambda.h` | `lambda` -> `_Lambda`, `closure_environment` -> `_Closure_environment` (QPCC extension) |
+| `lambda.h` | `lambda` -> `_Lambda`, `closure_environment` -> `_Closure_environment` (Qiang extension) |
 
 The tagged-union, maxof/minof and lambda headers have no WG14 proposal behind
-them; they are a QPCC convenience.
-Pass `-I <qpcc>/qpcc/include/qbe` to the external preprocessor, as
-`qpcc/test.sh` does for `std=c2y` fixtures. QPCC itself only recognizes the
+them; they are a Qiang convenience.
+Pass `-I <Qiang>/Qiang/include/qbe` to the external preprocessor, as
+`Qiang/test.sh` does for `std=c2y` fixtures. Qiang itself only recognizes the
 underscore keywords.
 
 ## Pseudo-templates
@@ -155,7 +155,7 @@ Identifier characters glued to an instantiation join the name, so
 `Result_([T, E])_is_ok` is one identifier and `Result_([T, E]) r` is two.
 
 Arguments are matched by spelling, not resolved, and a repeat is a no-op. See
-`qpcc/tests/template.c`.
+`Qiang/tests/template.c`.
 
 ### Closures cannot live in globals
 
@@ -171,7 +171,7 @@ associations and a second `default`.
 
 ## CQE status
 
-`-std=cqe` is **C2y plus the QPCC extensions**, so `-std=c2y` stays exactly
+`-std=cqe` is **C2y plus the Qiang extensions**, so `-std=c2y` stays exactly
 C2y:
 
 - `_Function_pointer`, the prefix spelling of a function pointer type, and the
@@ -182,12 +182,12 @@ C2y:
   own through `-f_tagged_union` in any mode).
 - `void x = expr;`, which declares no object.
 
-Using a QPCC keyword under `-std=c2y` is diagnosed with a pointer at
+Using a Qiang keyword under `-std=c2y` is diagnosed with a pointer at
 `-std=cqe`.
 
 ## _Tagged_union status
 
-`-f_tagged_union` enables a QPCC extension (no WG14 proposal) for tagged
+`-f_tagged_union` enables a Qiang extension (no WG14 proposal) for tagged
 unions:
 
 ```c
@@ -211,7 +211,7 @@ switch (_Dynamic_tag(x)) {
   diagnosed.
 - The tag is optional, so `typedef _Tagged_union { ... } Value;` defines an
   anonymous one and `Value` stands for the type. clang implements none of
-  this, so its fixtures are QPCC-only (`// expect-exit N`).
+  this, so its fixtures are Qiang-only (`// expect-exit N`).
 ## _Function_pointer status
 
 The prefix spelling of a function pointer type, plus the storage type for any
@@ -291,26 +291,26 @@ Not supported:
 
 ## Testing
 
-- `sh qpcc/test.sh` — clang oracle over `qpcc/tests/*.c` (151 fixtures).
-- `moon test --target native qpcc/front qpcc/sema` — front-end and sema tests.
-- `qpcc/chibicc-tests/` — a vendored chibicc subset used for parsing and
+- `sh Qiang/test.sh` — clang oracle over `Qiang/tests/*.c` (151 fixtures).
+- `moon test --target native Qiang/front Qiang/sema` — front-end and sema tests.
+- `Qiang/chibicc-tests/` — a vendored chibicc subset used for parsing and
   end-to-end checks.
 - The full C feature matrix (types, aggregates, C23, GNU extensions, known
-  gaps): [`../doc/qpcc.md`](../doc/qpcc.md).
-- `sh examples/qpcc-selfhost/build-qbe-with-qpcc.sh` — compiles the whole of
-  `vendor/qbe` with QPCC, links it, and checks that the resulting `qbe` emits
+  gaps): [`../doc/Qiang.md`](../doc/Qiang.md).
+- `sh examples/Qiang-selfhost/build-qbe-with-Qiang.sh` — compiles the whole of
+  `vendor/qbe` with Qiang, links it, and checks that the resulting `qbe` emits
   byte-identical assembly to a reference build over QBE's own test corpus.
 
 ## Self-hosting
 
-QPCC builds QBE, and the binary it produces is itself a working QBE:
+Qiang builds QBE, and the binary it produces is itself a working QBE:
 
 ```sh
-sh examples/qpcc-selfhost/build-qbe-with-qpcc.sh
+sh examples/Qiang-selfhost/build-qbe-with-Qiang.sh
 # ... test corpus: 76 identical, 0 differing, 76 total
 ```
 
 That is the large-scale check that the compiler is correct: about 17k lines of
 ordinary C11, all three back ends, then 76 IL fixtures whose assembly output is
 compared byte for byte against a clang-built reference. See
-[`examples/qpcc-selfhost/`](../examples/qpcc-selfhost/README.md).
+[`examples/Qiang-selfhost/`](../examples/Qiang-selfhost/README.md).

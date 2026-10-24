@@ -1,0 +1,8 @@
+# MoonBit build output
+_build/
+.mooncakes/
+target/
+
+# Editor and OS noise
+.DS_Store
+*.swp

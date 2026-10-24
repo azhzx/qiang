@@ -150,9 +150,9 @@ pub fn is_c2y_keyword(s : String) -> Bool {
 }
 
 ///|
-/// QPCC-only keywords. They need -std=cqe; in every other mode they are
+/// Qiang-only keywords. They need -std=cqe; in every other mode they are
 /// ordinary identifiers, so no standard mode is affected by them.
-pub fn is_qpcc_keyword(s : String) -> Bool {
+pub fn is_qiang_keyword(s : String) -> Bool {
   match s {
     "_Function_pointer" | "_Lambda" | "_Closure_environment" => true
     _ => false
@@ -162,7 +162,7 @@ pub fn is_qpcc_keyword(s : String) -> Bool {
 ///|
 
 ///|
-/// QPCC \`-f_tagged_union\` keywords. Without the flag they are ordinary
+/// Qiang \`-f_tagged_union\` keywords. Without the flag they are ordinary
 /// identifiers.
 pub fn is_tagged_keyword(s : String) -> Bool {
   match s {
@@ -175,7 +175,7 @@ pub fn is_tagged_keyword(s : String) -> Bool {
 pub fn is_keyword_mode(s : String, mode : StdMode) -> Bool {
   is_keyword(s) ||
   (match mode {
-    Cqe => is_c23_keyword(s) || is_c2y_keyword(s) || is_qpcc_keyword(s)
+    Cqe => is_c23_keyword(s) || is_c2y_keyword(s) || is_qiang_keyword(s)
     C2y => is_c23_keyword(s) || is_c2y_keyword(s)
     C23 => is_c23_keyword(s)
     C11 => false
@@ -443,7 +443,7 @@ fn classify_float(text : String) -> Bool {
 }
 
 ///|
-/// QPCC pseudo-templates. \`Name_([T1, T2])\` is one token whose text is the
+/// Qiang pseudo-templates. \`Name_([T1, T2])\` is one token whose text is the
 /// head plus a hash of the argument spelling, computed here so every parser
 /// path sees an ordinary identifier and needs no lookahead of its own. The
 /// spelling - not the type - is hashed, so the same instantiation names the
@@ -512,7 +512,7 @@ fn Scanner::read_template_args(self : Scanner) -> String {
   let mut go = true
   while go {
     match self.src {
-      [] => abort("qpcc/front: unterminated template argument list")
+      [] => abort("Qiang/front: unterminated template argument list")
       ['[', ..] => {
         depth = depth + 1
         spelled = spelled + "["
@@ -527,7 +527,7 @@ fn Scanner::read_template_args(self : Scanner) -> String {
               go = false
             }
             _ =>
-              abort("qpcc/front: expected ')' after a template argument list")
+              abort("Qiang/front: expected ')' after a template argument list")
           }
         } else {
           depth = depth - 1
