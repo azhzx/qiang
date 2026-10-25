@@ -20,7 +20,7 @@ set -u
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 # vendor/qbe lives in the qbe.mbt checkout next to this repository.
-qbe_dir="$QBE_DIR"
+qbe_dir="${QBE_DIR-}"
 if [ -z "$qbe_dir" ]; then
   qbe_dir="$root/../qbe.mbt"
 fi

@@ -1,0 +1,103 @@
+.text
+.balign 16
+.globl f
+f:
+	endbr64
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $208, %rsp
+	movq %rdi, -176(%rbp)
+	movq %rsi, -168(%rbp)
+	movq %rdx, -160(%rbp)
+	movq %rcx, -152(%rbp)
+	movq %r8, -144(%rbp)
+	movq %r9, -136(%rbp)
+	movaps %xmm0, -128(%rbp)
+	movaps %xmm1, -112(%rbp)
+	movaps %xmm2, -96(%rbp)
+	movaps %xmm3, -80(%rbp)
+	movaps %xmm4, -64(%rbp)
+	movaps %xmm5, -48(%rbp)
+	movaps %xmm6, -32(%rbp)
+	movaps %xmm7, -16(%rbp)
+	movl $0, -208(%rbp)
+	movl $48, -204(%rbp)
+	movq %rbp, %rax
+	addq $16, %rax
+	movq %rax, -200(%rbp)
+	movq %rbp, %rax
+	addq $-176, %rax
+	movq %rax, -192(%rbp)
+	movslq -208(%rbp), %rcx
+	cmpl $48, %ecx
+	jb .Lbb2
+	movq -200(%rbp), %rax
+	movq %rax, %rcx
+	addq $8, %rcx
+	movq %rcx, -200(%rbp)
+	jmp .Lbb3
+.Lbb2:
+	movq -192(%rbp), %rax
+	addq %rcx, %rax
+	addl $8, %ecx
+	movl %ecx, -208(%rbp)
+.Lbb3:
+	movslq -204(%rbp), %rcx
+	cmpl $176, %ecx
+	jb .Lbb5
+	movq -200(%rbp), %rax
+	movq %rax, %rcx
+	addq $8, %rcx
+	movq %rcx, -200(%rbp)
+	jmp .Lbb6
+.Lbb5:
+	movq -192(%rbp), %rax
+	addq %rcx, %rax
+	addl $16, %ecx
+	movl %ecx, -204(%rbp)
+.Lbb6:
+	movsd (%rax), %xmm0
+	leave
+	ret
+.type f, @function
+.size f, .-f
+/* end function f */
+
+.text
+.balign 16
+.globl g
+g:
+	endbr64
+	pushq %rbp
+	movq %rsp, %rbp
+	subq $208, %rsp
+	movq %rdi, -176(%rbp)
+	movq %rsi, -168(%rbp)
+	movq %rdx, -160(%rbp)
+	movq %rcx, -152(%rbp)
+	movq %r8, -144(%rbp)
+	movq %r9, -136(%rbp)
+	movaps %xmm0, -128(%rbp)
+	movaps %xmm1, -112(%rbp)
+	movaps %xmm2, -96(%rbp)
+	movaps %xmm3, -80(%rbp)
+	movaps %xmm4, -64(%rbp)
+	movaps %xmm5, -48(%rbp)
+	movaps %xmm6, -32(%rbp)
+	movaps %xmm7, -16(%rbp)
+	movl $0, -208(%rbp)
+	movl $48, -204(%rbp)
+	movq %rbp, %rax
+	addq $16, %rax
+	movq %rax, -200(%rbp)
+	movq %rbp, %rax
+	addq $-176, %rax
+	movq %rax, -192(%rbp)
+	callq print
+	leave
+	ret
+.type g, @function
+.size g, .-g
+/* end function g */
+
+.section .note.GNU-stack,"",@progbits

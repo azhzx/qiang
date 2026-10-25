@@ -12,7 +12,7 @@ set -eu
 here=$(cd "$(dirname "$0")" && pwd)
 root=$(cd "$here/../.." && pwd)
 # vendor/qbe lives in the qbe.mbt checkout next to this repository.
-qbe_dir="$QBE_DIR"
+qbe_dir="${QBE_DIR-}"
 if [ -z "$qbe_dir" ]; then
   qbe_dir="$root/../qbe.mbt"
 fi
@@ -37,7 +37,7 @@ mkdir -p "$out/obj"
 sources=$(ls "$qbe"/vendor/qbe/*.c "$qbe"/vendor/qbe/amd64/*.c "$qbe"/vendor/qbe/arm64/*.c "$qbe"/vendor/qbe/rv64/*.c)
 n=0
 for src in $sources; do
-  obj=$(printf "%s" "$src" | sed "s|^$root/||; s|/|_|g; s|\.c$|.o|")
+  obj=$(printf "%s" "$src" | sed "s|^$qbe/||; s|/|_|g; s|\.c$|.o|")
   clang -E -P -nostdinc -I "$root/include/qiang" -I "$qbe/vendor/qbe" -I "$qbe/vendor/qbe/amd64" -I "$qbe/vendor/qbe/arm64" -I "$qbe/vendor/qbe/rv64" "$src" > "$out/obj/$obj.i"
   "$exe" "$out/obj/$obj.i" -o "$out/obj/$obj"
   n=$((n + 1))
