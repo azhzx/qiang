@@ -44,6 +44,10 @@ jobs:
       - name: Toolchain version
         run: moon version --all
 
+      - name: Sync dependencies
+        run: moon update
+        working-directory: Qiang
+
       - name: Check formatting
         run: moon fmt --check
         working-directory: Qiang
