@@ -6,3 +6,7 @@ target/
 # Editor and OS noise
 .DS_Store
 *.swp
+
+# Self-host demo output and the external-scan work tree
+.Qiang_build/
+build/
