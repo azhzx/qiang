@@ -333,11 +333,16 @@ Not supported:
 Qiang builds QBE, and the binary it produces is itself a working QBE:
 
 ```sh
-sh examples/selfhost/build-qbe-with-Qiang.sh
-# ... test corpus: 76 identical, 0 differing, 76 total
+sh examples/selfhost/build-qbe-with-qiang.sh
+# ... test corpus:    54 identical, 22 differing, 76 total
 ```
 
-That is the large-scale check that the compiler is correct: about 17k lines of
-ordinary C11, all three back ends, then 76 IL fixtures whose assembly output is
-compared byte for byte against a clang-built reference. See
-[`examples/selfhost/`](examples/selfhost/README.md).
+That is the large-scale check: about 17k lines of ordinary C11, all three back
+ends, then 76 IL fixtures whose assembly is compared byte for byte against a
+clang-built reference. All 32 translation units compile, the result links, and
+the qbe it produces runs. The last line is a scoreboard, not a claim: it
+currently reads 54 identical of 76, and the differing fixtures are open work.
+It also moves by a fixture or two between runs, because two builds of the same
+QBE may allocate registers differently.
+
+See [`examples/selfhost/`](examples/selfhost/README.md).
