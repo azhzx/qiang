@@ -19,6 +19,18 @@ moon build --target native   # build qiang/qiang.exe
 sh test.sh                   # clang oracle over tests/*.c
 ```
 
+### What you need
+
+- the MoonBit toolchain (moon / moonc; the sources are written
+  against 0.1.20261023 / moonc v0.10.17);
+- a C compiler on PATH for preprocessing and linking: clang (the
+  qiang run driver shells out to clang -E -P and to the system linker);
+- the sibling qbe.mbt checkout (see above).
+
+Nothing else is needed. moon build --target native produces
+qiang/qiang.exe; a workspace build puts it under _build/ with the
+module name in the path.
+
 ## Pipeline
 
 ```

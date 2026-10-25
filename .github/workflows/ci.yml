@@ -52,8 +52,16 @@ jobs:
         run: moon fmt --check
         working-directory: Qiang
 
+      - name: Check
+        run: moon check --target native
+        working-directory: Qiang
+
       - name: Build
         run: moon build --target native
+        working-directory: Qiang
+
+      - name: Unit tests (front end and sema)
+        run: moon test --target native
         working-directory: Qiang
 
       - name: Oracle (compile, link and run every fixture)
