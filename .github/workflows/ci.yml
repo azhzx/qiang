@@ -1,0 +1,58 @@
+# CI for Qiang - the C front end that lowers to QBE IR.
+#
+# Qiang depends on the qbe module through a moon.work workspace, and that
+# workspace expects the qbe.mbt checkout next to this one, so the job checks
+# both repositories out as siblings. Nothing has to be published first.
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  # See the note in qbe.mbt: cli.moonbitlang.com serves only latest/nightly,
+  # so the toolchain cannot be pinned by version; this env documents the one
+  # the sources are written against.
+  MOONBIT_VERSION: "0.1.20261023"
+
+jobs:
+  check:
+    name: Build, format & oracle
+    runs-on: macos-26
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout qbe.mbt (the dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: azhzx/qbe.mbt
+          path: qbe.mbt
+
+      - name: Checkout Qiang
+        uses: actions/checkout@v4
+        with:
+          path: Qiang
+
+      - name: Install MoonBit
+        run: |
+          curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash
+          echo "$HOME/.moon/bin" >> $GITHUB_PATH
+
+      - name: Toolchain version
+        run: moon version --all
+
+      - name: Check formatting
+        run: moon fmt --check
+        working-directory: Qiang
+
+      - name: Build
+        run: moon build --target native
+        working-directory: Qiang
+
+      - name: Oracle (compile, link and run every fixture)
+        run: sh test.sh
+        working-directory: Qiang
+       

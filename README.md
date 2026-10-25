@@ -1,8 +1,23 @@
 # Qiang — the Qopple C compiler
 
-Qiang is the C11 front end and code generator that targets the qbe.mbt IR
-builder. It is the only C compiler in this repository: the historical
-parser/codegen that lived directly in `Qiang/` has been removed.
+Qiang is a C compiler: a C11 front end (with C23, C2y, CQE, GNU extensions,
+closures, lambdas and tagged unions on top) that lowers to the `ir_builder` of
+[qbe.mbt](https://github.com/azhzx/qbe.mbt) and emits Mach-O objects or
+assembly. It used to live inside qbe.mbt as `qpcc`; that front-end history
+came along when it moved out.
+
+## Getting started
+
+Qiang depends on the qbe module, and the dependency is resolved from a
+**workspace**: `moon.work` lists this checkout and `../qbe.mbt` as members, so
+the qbe sources next to this directory are used directly and nothing has to be
+published first. A fresh clone therefore needs that sibling checkout.
+
+```sh
+sh tools/bootstrap.sh        # clone ../qbe.mbt if it is not there
+moon build --target native   # build qiang/qiang.exe
+sh test.sh                   # clang oracle over tests/*.c
+```
 
 ## Pipeline
 
@@ -13,27 +28,27 @@ source.c --(clang -E)--> tokens --(front)--> AST
 
 | Package | Role |
 | --- | --- |
-| `Qiang/front` | lexer, surface AST, full C11 + GNU-extension parser (`-std=c11|c23`) |
-| `Qiang/sema` | name resolution, types, layout, constant evaluation, diagnostics |
-| `Qiang/codegen` | lowers the checked AST onto `ir_builder` |
-| `Qiang/cmd` | driver CLI |
+| `front` | lexer, surface AST, full C11 + GNU-extension parser |
+| `sema` | name resolution, types, layout, constant evaluation, diagnostics |
+| `codegen` | lowers the checked AST onto `ir_builder` |
+| `qiang` | driver CLI (the executable is named after this package) |
 
 ## Usage
 
 ```sh
-moon build --target native Qiang/cmd
+moon build --target native qiang
 
 # one step: preprocess, compile, link and run
-Qiang run hello.c [-- args...]
+qiang run hello.c [-- args...]
 
 # or drive the pieces yourself
-Qiang input.c -o input.o [--emit obj|asm|qbe] [-std=c11|c23|c2y] [--check]
+qiang input.c -o input.o [--emit obj|asm|qbe] [-std=c11|c23|c2y] [--check]
 clang input.o -o a.out
 ```
 
-`Qiang run` drives clang for the parts Qiang does not own: it preprocesses with
+`qiang run` drives clang for the parts Qiang does not own: it preprocesses with
 `clang -E -P` (so `#include`/`#define` work and the headers under
-`Qiang/include/qbe/` are found when run from the repository root; `Qiang_INCLUDE`
+`include/qiang/` are found when run from the repository root; `QIANG_INCLUDE`
 overrides that), compiles with Qiang, links with clang, runs the program and
 forwards its exit status. `-I`/`-D`/`-U` go to the preprocessor and everything
 after `--` goes to the program. It needs clang on PATH and says so if it is
@@ -99,7 +114,7 @@ Known limitations:
 - `char8_t` is treated as a built-in type name rather than the `<uchar.h>`
   typedef, so it cannot be shadowed.
 - The feature matrix (status per construct, with the oracle fixtures that
-  cover each) is in `../doc/Qiang.md`.
+  cover each) is in `doc/qiang.md`.
 
 ## C2y status
 
@@ -121,7 +136,7 @@ Supported:
 The Qiang-only keywords are not part of this mode: see `-std=cqe` below.
 
 The friendly spellings live in hand-written headers under
-`Qiang/include/qbe/`:
+`include/qiang/`:
 
 | Header | Macro |
 | --- | --- |
@@ -135,8 +150,8 @@ The friendly spellings live in hand-written headers under
 
 The tagged-union, maxof/minof and lambda headers have no WG14 proposal behind
 them; they are a Qiang convenience.
-Pass `-I <Qiang>/Qiang/include/qbe` to the external preprocessor, as
-`Qiang/test.sh` does for `std=c2y` fixtures. Qiang itself only recognizes the
+Pass `-I include/qiang` to the external preprocessor, as
+`test.sh` does for `std=c2y` fixtures. Qiang itself only recognizes the
 underscore keywords.
 
 ## Pseudo-templates
@@ -155,7 +170,7 @@ Identifier characters glued to an instantiation join the name, so
 `Result_([T, E])_is_ok` is one identifier and `Result_([T, E]) r` is two.
 
 Arguments are matched by spelling, not resolved, and a repeat is a no-op. See
-`Qiang/tests/template.c`.
+`tests/template.c`.
 
 ### Closures cannot live in globals
 
@@ -291,13 +306,13 @@ Not supported:
 
 ## Testing
 
-- `sh Qiang/test.sh` — clang oracle over `Qiang/tests/*.c` (151 fixtures).
-- `moon test --target native Qiang/front Qiang/sema` — front-end and sema tests.
+- `sh test.sh` — clang oracle over `tests/*.c` (184 fixtures).
+- `moon test --target native front sema` — front-end and sema tests.
 - `Qiang/chibicc-tests/` — a vendored chibicc subset used for parsing and
   end-to-end checks.
 - The full C feature matrix (types, aggregates, C23, GNU extensions, known
-  gaps): [`../doc/Qiang.md`](../doc/Qiang.md).
-- `sh examples/Qiang-selfhost/build-qbe-with-Qiang.sh` — compiles the whole of
+  gaps): [`doc/qiang.md`](doc/qiang.md).
+- `sh examples/selfhost/build-qbe-with-Qiang.sh` — compiles the whole of
   `vendor/qbe` with Qiang, links it, and checks that the resulting `qbe` emits
   byte-identical assembly to a reference build over QBE's own test corpus.
 
@@ -306,11 +321,11 @@ Not supported:
 Qiang builds QBE, and the binary it produces is itself a working QBE:
 
 ```sh
-sh examples/Qiang-selfhost/build-qbe-with-Qiang.sh
+sh examples/selfhost/build-qbe-with-Qiang.sh
 # ... test corpus: 76 identical, 0 differing, 76 total
 ```
 
 That is the large-scale check that the compiler is correct: about 17k lines of
 ordinary C11, all three back ends, then 76 IL fixtures whose assembly output is
 compared byte for byte against a clang-built reference. See
-[`examples/Qiang-selfhost/`](../examples/Qiang-selfhost/README.md).
+[`examples/selfhost/`](examples/selfhost/README.md).
