@@ -308,7 +308,7 @@ Not supported:
 
 - `sh test.sh` — clang oracle over `tests/*.c` (184 fixtures).
 - `moon test --target native front sema` — front-end and sema tests.
-- `Qiang/chibicc-tests/` — a vendored chibicc subset used for parsing and
+- `chibicc-tests/` — a vendored chibicc subset used for parsing and
   end-to-end checks.
 - The full C feature matrix (types, aggregates, C23, GNU extensions, known
   gaps): [`doc/qiang.md`](doc/qiang.md).
