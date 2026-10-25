@@ -146,9 +146,9 @@ fn qiang_include_dir() -> String? {
     Some(d) => cands.push(d)
     None => ()
   }
-  cands.push("Qiang/include/qbe")
-  cands.push("include/qbe")
-  cands.push("../Qiang/include/qbe")
+  cands.push("include/qiang")
+  cands.push("Qiang/include/qiang")
+  cands.push("../Qiang/include/qiang")
   for c in cands {
     let probe = @fs.read_file_to_string(c + "/stddefer.h") catch { _ => "" }
     if probe != "" {

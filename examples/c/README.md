@@ -6,7 +6,7 @@ with clang.
 ```sh
 sh examples/c/run.sh                          # run every *.c in this directory
 sh examples/c/run.sh hello.c                  # run one file (C11)
-sh examples/c/run.sh -std=c2y lambda.c        # flags are passed to `Qiang run`
+sh examples/c/run.sh lambda.c        # flags are passed to `Qiang run`
 sh examples/c/run.sh args.c -- 1 2            # ... and after -- to the program
 ```
 

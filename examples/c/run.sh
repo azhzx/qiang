@@ -27,7 +27,7 @@ if [ ! -x "$exe" ]; then
   exit 1
 fi
 
-# Qiang is run from the repository root so it finds Qiang/include/qbe.
+# Qiang is run from the repository root so it finds include/qiang.
 run_Qiang() {
   ( cd "$root" && "$exe" run "$@" )
 }
