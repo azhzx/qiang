@@ -15,7 +15,7 @@ preferred_target = "native"
 description = "Qiang: a C11 compiler front end that lowers to QBE IR (formerly qpcc)"
 
 import {
-  "azhzx/qbe@0.42.0",
+  "azhzx/qbe@0.43.0",
   "moonbitlang/x@0.5.5",
   "moonbitlang/async@0.21.0",
 }
