@@ -123,7 +123,7 @@ def main():
         c = run([qiang, pre, '-o', obj])
         if c.returncode != 0:
             bad += 1
-            fails.append((src, 'qiang failed: ' + c.stderr.decode()[:200]))
+            fails.append((src, 'qiang failed rc=%d: %r' % (c.returncode, c.stderr.decode()[:200])))
             continue
         exe = os.path.join(tmp, 'p%d' % i)
         if run(['clang', obj, '-o', exe]).returncode != 0:
