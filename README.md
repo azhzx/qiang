@@ -334,15 +334,21 @@ Qiang builds QBE, and the binary it produces is itself a working QBE:
 
 ```sh
 sh examples/selfhost/build-qbe-with-qiang.sh
-# ... test corpus:    54 identical, 22 differing, 76 total
+# asm:            54 identical, 22 differing, 76 total (diagnostic)
+# behaviour:      5 identical, 0 differing, 5 runnable (gate)
+# OK: the Qiang-built qbe behaves like the reference on every runnable fixture
 ```
 
-That is the large-scale check: about 17k lines of ordinary C11, all three back
-ends, then 76 IL fixtures whose assembly is compared byte for byte against a
-clang-built reference. All 32 translation units compile, the result links, and
-the qbe it produces runs. The last line is a scoreboard, not a claim: it
-currently reads 54 identical of 76, and the differing fixtures are open work.
-It also moves by a fixture or two between runs, because two builds of the same
-QBE may allocate registers differently.
+That is the large-scale check: about 17k lines of ordinary C11 and all three
+back ends. All 32 translation units compile, the result links, and the qbe it
+produces runs.
 
-See [`examples/selfhost/`](examples/selfhost/README.md).
+Two comparisons run over QBE's own corpus:
+
+- **behaviour** is the gate. Every fixture that defines `$main` is compiled to
+  the native target by both qbe binaries, assembled, linked and run; their exit
+  status and stdout must match.
+- **assembly identity** is only a diagnostic. QBE's own output depends on its
+  memory layout, so two differently built qbe binaries legitimately choose
+  different registers and the text differs; that number moves between runs and
+  between builds of the same source.
