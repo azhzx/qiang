@@ -1444,14 +1444,14 @@ fn Cg::gen_bin(
   let uns = usual_uns(c, lt, rt) || is_ptr_ty(lt) || is_ptr_ty(rt)
   if is_cmp(op) {
     let a = c.gen_expr(l)
-    let av = c.coerce(a, cls_of(lt), cls)
+    let av = c.coerce(a, cls_of(lt), cls, uns=is_uns(lt))
     let b = c.gen_expr(r)
-    let bv = c.coerce(b, cls_of(rt), cls)
+    let bv = c.coerce(b, cls_of(rt), cls, uns=is_uns(rt))
     c.b.cmp(c.fid, cmp_op(op, cls, uns, fl), @types.Kw, av, bv)
   } else if op == "<<" || op == ">>" {
     let shift_cls = cls_of(result_ty)
-    let a = c.coerce(c.gen_expr(l), cls_of(lt), shift_cls)
-    let b = c.coerce(c.gen_expr(r), cls_of(rt), shift_cls)
+    let a = c.coerce(c.gen_expr(l), cls_of(lt), shift_cls, uns=is_uns(lt))
+    let b = c.coerce(c.gen_expr(r), cls_of(rt), shift_cls, uns=is_uns(rt))
     c.b.arith(
       c.fid,
       arith_op(op, shift_cls, is_uns(result_ty)),
@@ -1464,7 +1464,12 @@ fn Cg::gen_bin(
       (@sema.CPtr(el), _) =>
         if !is_ptr_ty(r.ty) {
           let base = c.gen_expr(l)
-          let idx = c.coerce(c.gen_expr(r), cls_of(rt), @types.Kl)
+          let idx = c.coerce(
+            c.gen_expr(r),
+            cls_of(rt),
+            @types.Kl,
+            uns=is_uns(rt),
+          )
           let sz = size_of(el, c.layouts)
           let off = c.b.arith(
             c.fid,
@@ -1491,13 +1496,13 @@ fn Cg::gen_bin(
             c.b.iconst(c.fid, sz.to_int64()),
           )
         } else {
-          let a = c.coerce(c.gen_expr(l), cls_of(lt), cls)
-          let b = c.coerce(c.gen_expr(r), cls_of(rt), cls)
+          let a = c.coerce(c.gen_expr(l), cls_of(lt), cls, uns=is_uns(lt))
+          let b = c.coerce(c.gen_expr(r), cls_of(rt), cls, uns=is_uns(rt))
           c.b.arith(c.fid, arith_op(op, cls, uns), cls, a, b)
         }
       (_, @sema.CPtr(el)) => {
         let base = c.gen_expr(r)
-        let idx = c.coerce(c.gen_expr(l), cls_of(lt), @types.Kl)
+        let idx = c.coerce(c.gen_expr(l), cls_of(lt), @types.Kl, uns=is_uns(lt))
         let sz = size_of(el, c.layouts)
         let off = c.b.arith(
           c.fid,
@@ -1509,14 +1514,14 @@ fn Cg::gen_bin(
         c.b.arith(c.fid, @types.Add, @types.Kl, base, off)
       }
       _ => {
-        let a = c.coerce(c.gen_expr(l), cls_of(lt), cls)
-        let b = c.coerce(c.gen_expr(r), cls_of(rt), cls)
+        let a = c.coerce(c.gen_expr(l), cls_of(lt), cls, uns=is_uns(lt))
+        let b = c.coerce(c.gen_expr(r), cls_of(rt), cls, uns=is_uns(rt))
         c.b.arith(c.fid, arith_op(op, cls, uns), cls, a, b)
       }
     }
   } else {
-    let a = c.coerce(c.gen_expr(l), cls_of(lt), cls)
-    let b = c.coerce(c.gen_expr(r), cls_of(rt), cls)
+    let a = c.coerce(c.gen_expr(l), cls_of(lt), cls, uns=is_uns(lt))
+    let b = c.coerce(c.gen_expr(r), cls_of(rt), cls, uns=is_uns(rt))
     c.b.arith(c.fid, arith_op(op, cls, uns), cls, a, b)
   }
 }

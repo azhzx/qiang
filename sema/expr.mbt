@@ -103,11 +103,33 @@ pub fn int_literal_type(s : String) -> CType {
   } else if has_u {
     CInt(false)
   } else {
+    // C99 6.4.4.1: without a suffix a decimal constant is int, long, or long
+    // long (all signed), while a hex or octal one is int, unsigned int, long,
+    // then unsigned long. That second ladder is why 0xffffffff is an unsigned
+    // int and not -1: reading it as a signed long changes what (v & 0xffffffff)
+    // means in code like QBE's normins.
     let v = parse_int_lit(s)
-    if v > 2147483647L || v < -2147483648L {
+    let cs = s.to_array()
+    let is_dec = !(cs.length() > 1 && cs[0] == '0')
+    let int_max = 2147483647L
+    let uint_max = 4294967295L
+    let long_max = 9223372036854775807L
+    if is_dec {
+      if v <= int_max {
+        CInt(true)
+      } else if v <= long_max {
+        CLong(true)
+      } else {
+        CLongLong(true)
+      }
+    } else if v <= int_max {
+      CInt(true)
+    } else if v <= uint_max {
+      CInt(false)
+    } else if v <= long_max {
       CLong(true)
     } else {
-      CInt(true)
+      CLongLong(false)
     }
   }
 }
