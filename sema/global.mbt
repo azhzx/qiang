@@ -56,7 +56,7 @@ fn ptr_reloc(e : @front.Expr, elem : CType, ctx : Ctx) -> GlobalReloc? {
         joined = joined + p
       }
       let idx = ctx.strings.length()
-      ctx.strings.push(joined)
+      ctx.strings.push(decode_string(joined))
       Some(RString(idx, 0))
     }
     @front.EIdent(n) => Some(RGlobal(n, 0))

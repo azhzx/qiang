@@ -161,6 +161,7 @@ pub fn parse_char_lit(s : String) -> Int64 {
       'b' => 8
       'f' => 12
       'v' => 11
+      'e' => 27
       'x' => {
         let mut vv = 0
         let mut k = 2
@@ -210,6 +211,15 @@ pub fn decode_string(raw : String) -> String {
         't' => out.write_char('\t')
         'r' => out.write_char('\r')
         '0' => out.write_char('\u{0}')
+        // C also has these named escapes; an unrecognised escape falls back
+        // to the character itself further down (with a warning in GCC), which
+        // is why \j, \k and \l already decoded to j, k and l.
+        'a' => out.write_char('\u{7}')
+        'b' => out.write_char('\u{8}')
+        'f' => out.write_char('\u{c}')
+        'v' => out.write_char('\u{b}')
+        // GNU extension, still accepted by every C compiler in use.
+        'e' => out.write_char('\u{1b}')
         '\\' => out.write_char('\\')
         '\'' => out.write_char('\'')
         '"' => out.write_char('"')

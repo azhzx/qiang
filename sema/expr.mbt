@@ -157,9 +157,10 @@ fn field_of(layout : Layout, name : String) -> Field? {
 pub fn expr_type_undecayed(e : @front.Expr, ctx : Ctx) -> CType {
   match e {
     @front.EString(parts) => {
+      // decoded: \x41 is one byte, not four
       let mut n = 1
       for p in parts {
-        n = n + p.length()
+        n = n + decode_string(p).length()
       }
       CArray(CChar(true), n)
     }
@@ -215,7 +216,9 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
         joined = joined + p
       }
       let idx = ctx.strings.length()
-      ctx.strings.push(joined)
+      // Global initialisers decode through decode_string; this path used to
+      // store the raw text, so \e reached the object file as two bytes.
+      ctx.strings.push(decode_string(joined))
       mk_expr(TStr(idx), CPtr(CChar(true)), false)
     }
     @front.EIdent(n) =>
