@@ -26,7 +26,12 @@ fn is_long_ty(t : CType) -> Bool {
 
 ///|
 fn promote_arith(a : CType, b : CType) -> CType {
-  if ty_eq(a, CDouble) || ty_eq(b, CDouble) {
+  // long double outranks double; without this arm `(long double)x + 1` was
+  // ranked as an integer operation, so the conversion to double never got
+  // inserted and the value was passed to printf in the wrong class.
+  if ty_eq(a, CLongDouble) || ty_eq(b, CLongDouble) {
+    CLongDouble
+  } else if ty_eq(a, CDouble) || ty_eq(b, CDouble) {
     CDouble
   } else if ty_eq(a, CFloat) || ty_eq(b, CFloat) {
     CFloat
@@ -172,6 +177,7 @@ pub fn expr_type_undecayed(e : @front.Expr, ctx : Ctx) -> CType {
     _ => check_expr(e, ctx).ty
   }
 }
+
 ///|
 pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
   match e {
@@ -276,6 +282,11 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
     @front.EBinary(op, l, r) => check_binary(op, l, r, ctx)
     @front.EUnary(op, x) => check_unary(op, x, ctx)
     @front.EPostfix(op, x) => check_unary(op, x, ctx)
+    @front.ECondElvis(c, f) => {
+      let tc = check_expr(c, ctx)
+      let tf = check_expr(f, ctx)
+      mk_expr(TElvis(tc, tf), common_type(tc.ty, tf.ty), false)
+    }
     @front.ECond(c, t, f) => {
       let tc = check_expr(c, ctx)
       let tt = check_expr(t, ctx)

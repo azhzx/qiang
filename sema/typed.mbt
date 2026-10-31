@@ -11,6 +11,8 @@ pub(all) enum TExprKind {
   TAssign(TExpr, TExpr)
   TCall(String, TExpr, Array[TExpr])
   TCond(TExpr, TExpr, TExpr)
+  // `a ?: b`: branch on a, the true arm is a's own value
+  TElvis(TExpr, TExpr)
   TCast(TExpr)
   TMember(TExpr, Int32)
   // Qiang -f_tagged_union payload member: address is base + off, and a

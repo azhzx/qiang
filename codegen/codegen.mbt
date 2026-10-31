@@ -1210,6 +1210,45 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int32 {
       // expression value is the call result itself.
       cv
     }
+    @sema.TElvis(cond, f) => {
+      let then_b = c.new_block("elvis.then")
+      let else_b = c.new_block("elvis.else")
+      let join = c.new_block("elvis.join")
+      let has_val = !(e.ty is CVoid)
+      let p = if has_val {
+        c.b.block_param(c.fid, join, cls_of(e.ty))
+      } else {
+        0
+      }
+      let cv = c.gen_expr(cond)
+      let truth = c.truthy(cond.ty, cv)
+      c.b.jnz(c.fid, truth, then_b, [], else_b, [])
+      c.open = false
+      c.switch(then_b)
+      // GNU `a ?: b` takes the value a already produced, so a is evaluated
+      // exactly once. Rewriting it as `a ? a : b` ran the side effects twice,
+      // which made `++i ?: 10` yield 5 instead of 4.
+      if has_val {
+        c.b.jmp(c.fid, join, [c.convert(cv, cond.ty, e.ty)])
+      } else {
+        c.b.jmp(c.fid, join, [])
+      }
+      c.open = false
+      c.switch(else_b)
+      let fv = c.gen_expr(f)
+      if has_val {
+        c.b.jmp(c.fid, join, [c.convert(fv, f.ty, e.ty)])
+      } else {
+        c.b.jmp(c.fid, join, [])
+      }
+      c.open = false
+      c.switch(join)
+      if has_val {
+        p
+      } else {
+        c.b.iconst(c.fid, 0L)
+      }
+    }
     @sema.TCond(cond, t, f) => {
       let then_b = c.new_block("cond.then")
       let else_b = c.new_block("cond.else")

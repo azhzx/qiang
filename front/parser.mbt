@@ -1433,7 +1433,7 @@ fn Parser::parse_cond_expr(self : Parser) -> Expr {
   if self.eat_punct("?") {
     if self.eat_punct(":") {
       let f = self.parse_cond_expr()
-      ECond(c, c, f)
+      ECondElvis(c, f)
     } else {
       let t = self.parse_expr()
       self.expect_punct(":")

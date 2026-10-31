@@ -200,6 +200,9 @@ pub(all) enum Expr {
   EUnary(String, Expr)
   EPostfix(String, Expr)
   ECond(Expr, Expr, Expr)
+  // GNU `a ?: b`: the condition is evaluated once and stands for the missing
+  // middle operand, so it cannot be duplicated into ECond(c, c, f).
+  ECondElvis(Expr, Expr)
   EAssign(String, Expr, Expr)
   ECast(DeclSpec, Declarator, Expr)
   ESizeofExpr(Expr)
