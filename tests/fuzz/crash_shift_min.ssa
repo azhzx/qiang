@@ -1,0 +1,27 @@
+function w $f0(w %p.1, w %p.2) {
+@start
+	%t.3 =l alloc8 8
+	storew %p.1, %t.3
+	%t.4 =l alloc8 8
+	storew %p.2, %t.4
+	%t.5 =l alloc8 8
+	%t.6 =l alloc8 8
+	%t.9 =w loaduw %t.4
+	%t.10 =w xor 2, %t.9
+	storew %t.10, %t.5
+	%t.11 =w loaduw %t.4
+	storew %t.11, %t.6
+	%t.12 =w loaduw %t.3
+	%t.13 =w loaduw %t.6
+	%t.14 =w sub %t.12, %t.13
+	%t.19 =w loaduw %t.3
+	jmp @for.cond.1
+@for.cond.1
+	jmp @for.cond.1
+@for.end.4
+	ret 0
+}
+export function w $main() {
+@start
+	ret 0
+}
