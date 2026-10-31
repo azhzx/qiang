@@ -98,6 +98,11 @@ fn ptr_reloc(e : @front.Expr, elem : CType, ctx : Ctx) -> GlobalReloc? {
               )
             _ => None
           }
+        // &(type){...}: the compound literal has static storage here, so its
+        // address is the anonymous global ptr_reloc builds for it. Without
+        // this the initializer kept no relocation at all and the pointer was
+        // left at zero, which crashed on first dereference.
+        @front.ECompound(_, _, _) => ptr_reloc(x, elem, ctx)
         _ => None
       }
     @front.EBinary("+", l, r) =>
