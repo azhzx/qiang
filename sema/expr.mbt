@@ -649,7 +649,9 @@ fn check_binary(
       // pointer. The code generator decides whether to scale a `p + i` by
       // looking at the type of `i`, so typing this as a pointer silently
       // turned `p[a - b]` into a byte offset.
-      (CPtr(pa), CPtr(_)) => if op == "-" { CLong(false) } else { CPtr(pa) }
+      // ptrdiff_t is a *signed* long: is_signed reads the flag as 1 = signed,
+      // so CLong(false) made it unsigned, and `p - q < 0` compiled to cultl.
+      (CPtr(pa), CPtr(_)) => if op == "-" { CLong(true) } else { CPtr(pa) }
       (CPtr(e), _) => if op == "+" || op == "-" { CPtr(e) } else { lt }
       (_, CPtr(e)) => CPtr(e)
       _ => promote_arith(lt, rt)
