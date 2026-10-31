@@ -1,3 +1,4 @@
+// std=c2y
 /* KNOWN FAILURE, kept on purpose.
  *
  * static long long g;  g = -1;

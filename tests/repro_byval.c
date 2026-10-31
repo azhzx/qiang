@@ -1,3 +1,4 @@
+// std=c2y
 /* Two shapes that appear in simpl.c: a function taking a struct by value,
  * and a function taking a small array by value, both called from a loop. */
 int printf(char *, ...);

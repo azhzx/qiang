@@ -1,3 +1,4 @@
+// std=c2y
 typedef unsigned int uint;
 int printf(char *, ...);
 

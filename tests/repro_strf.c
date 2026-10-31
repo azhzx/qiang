@@ -1,3 +1,4 @@
+// std=c2y
 /* QPCC miscompiles the strf shape in vendor/qbe/util.c.
  *
  * strf is variadic; it sizes the buffer with vsnprintf(NULL, 0, ...) and

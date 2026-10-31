@@ -1,3 +1,4 @@
+// std=c2y
 /* NEGATIVE RESULT, kept on purpose.
  *
  * vendor/qbe/simpl.c:blit, extracted verbatim (struct table, abs, p++ walk),
