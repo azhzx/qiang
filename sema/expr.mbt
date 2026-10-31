@@ -150,6 +150,28 @@ fn field_of(layout : Layout, name : String) -> Field? {
 }
 
 ///|
+// The type an expression has for `typeof` and `sizeof`: arrays do not decay.
+// check_expr types a string literal as char* and decays array lvalues, which is
+// right for rvalues but wrong here - C11 6.5.3.4 and 6.5.3.4p2 both look at the
+// operand's own type, so sizeof("foo") is 4 and typeof("foo") is char[4].
+pub fn expr_type_undecayed(e : @front.Expr, ctx : Ctx) -> CType {
+  match e {
+    @front.EString(parts) => {
+      let mut n = 1
+      for p in parts {
+        n = n + p.length()
+      }
+      CArray(CChar(true), n)
+    }
+    @front.EIdent(n) =>
+      match ctx.scopes.lookup(n) {
+        Some(sym) => sym.ty
+        None => check_expr(e, ctx).ty
+      }
+    _ => check_expr(e, ctx).ty
+  }
+}
+///|
 pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
   match e {
     @front.EInt(s) =>
@@ -339,19 +361,9 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
       )
     }
     @front.ESizeofExpr(x) => {
-      // A string literal has array type in C, so sizeof("ab") is 3, not the
-      // pointer size. This sema types the literal as char*, so measure it from
-      // the literal itself.
-      let sz = match x {
-        @front.EString(parts) => {
-          let mut n = 1
-          for p in parts {
-            n = n + p.length()
-          }
-          n
-        }
-        _ => size_of_ty(check_expr(x, ctx).ty, ctx.layouts)
-      }
+      // sizeof takes the operand's own type, so arrays do not decay here
+      // (sizeof("ab") is 3, not the pointer size).
+      let sz = size_of_ty(expr_type_undecayed(x, ctx), ctx.layouts)
       mk_expr(TSizeof(sz), CLong(false), false)
     }
     @front.ESizeofType(spec, d) => {

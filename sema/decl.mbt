@@ -197,7 +197,7 @@ pub fn declspec_to_type(spec : @front.DeclSpec, ctx : Ctx) -> CType {
         let b = declspec_to_type(s2, ctx)
         base = Some(build_type(d2, b, ctx))
       }
-      @front.TTypeofExpr(e) => base = Some(check_expr(e, ctx).ty)
+      @front.TTypeofExpr(e) => base = Some(expr_type_undecayed(e, ctx))
       @front.TAtomicSpec(s2, d2) => {
         let b = declspec_to_type(s2, ctx)
         base = Some(build_type(d2, b, ctx))

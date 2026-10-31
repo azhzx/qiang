@@ -349,16 +349,7 @@ pub fn const_eval_int(e : @front.Expr, ctx : Ctx) -> Int64 {
     // silently produced 0. That made "static const unsigned n = sizeof(arr);"
     // store zero (and sizeof(arr) / sizeof(arr[0]) divide by zero).
     @front.ESizeofExpr(x) =>
-      match x {
-        @front.EString(parts) => {
-          let mut n = 1
-          for p in parts {
-            n = n + p.length()
-          }
-          n.to_int64()
-        }
-        _ => size_of_ty(check_expr(x, ctx).ty, ctx.layouts).to_int64()
-      }
+      size_of_ty(expr_type_undecayed(x, ctx), ctx.layouts).to_int64()
     @front.EAlignofType(spec, d) => {
       let b = declspec_to_type(spec, ctx)
       align_of_ty(build_type(d, b, ctx), ctx.layouts).to_int64()
