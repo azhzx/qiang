@@ -68,3 +68,11 @@ jobs:
         run: sh test.sh
         working-directory: Qiang
        
+      # The oracle compiles both sides with Qiang, so it cannot see a calling
+      # convention mismatch: both sides of the call are lowered the same way.
+      # This compiles each case four ways (all clang, library with Qiang,
+      # program with Qiang, all Qiang) and compares against clang, which is
+      # what catches a struct return that only works inside Qiang.
+      - name: ABI interoperability matrix
+        run: sh tools/abi_matrix.sh
+        working-directory: Qiang

@@ -577,21 +577,29 @@ fn typ_of(c : Cg, ty : @sema.CType) -> Int32 {
           let lay = c.layouts[id]
           let fields : Array[(@types.FieldType, Int32)] = []
           for f in lay.fields {
+            // Map by C type, not by size: a double and a long are both 8
+            // bytes but live in different register files, and the ABI pass
+            // tells them apart through the :type field kinds only.
             let (k, l) = match f.ty {
               @sema.CStruct(_) | @sema.CUnion(_) =>
                 (@types.FTyp, typ_of(c, f.ty))
-              _ => {
+              @sema.CFloat => (@types.Fs, 4)
+              @sema.CDouble | @sema.CLongDouble => (@types.Fd, 8)
+              @sema.CBool | @sema.CChar(_) => (@types.Fb, 1)
+              @sema.CShort(_) => (@types.Fh, 2)
+              @sema.CInt(_) | @sema.CBitInt(_) => (@types.Fw, 4)
+              @sema.CEnum(_) => {
+                // an enum is as wide as its underlying integer type
                 let fs = size_of(f.ty, c.layouts)
                 if fs == 1 {
                   (@types.Fb, 1)
                 } else if fs == 2 {
                   (@types.Fh, 2)
-                } else if fs == 4 {
-                  (@types.Fw, 4)
                 } else {
-                  (@types.Fl, 8)
+                  (@types.Fw, 4)
                 }
               }
+              _ => (@types.Fl, 8)
             }
             fields.push((k, l))
           }
