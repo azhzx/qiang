@@ -11,8 +11,10 @@ priv struct Cg {
   cont_blks : Array[Int32]
   mut ret_ty : @sema.CType
   mut open : Bool
-  mut ret_sret : Bool
-  mut sret_ptr : Int32
+  // The QBE type index of an aggregate return (`:type.N`), or -1.
+  mut ret_typ : Int32
+  // C struct id -> QBE type index, so each aggregate is defined once.
+  typ_ids : Map[Int32, Int32]
   mut scratch : Int32
   mut bump : Int32
   mut block_seq : Int32
@@ -69,8 +71,8 @@ fn ret_of(ty : @sema.CType) -> @ir_builder.Ret {
     | @sema.CFunc(_, _, _)
     | @sema.CArray(_, _)
     | @sema.CVLA(_, _)
-    | @sema.CStruct(_)
     | @sema.CUnion(_) => @ir_builder.Long
+    @sema.CStruct(_) => @ir_builder.Wide
     _ => @ir_builder.Word
   }
 }
@@ -546,6 +548,61 @@ fn Cg::new_block(c : Cg, name : String) -> Int32 {
 fn Cg::switch(c : Cg, blk : Int32) -> Unit {
   c.b.switch_to(c.fid, blk)
   c.open = true
+}
+
+///|
+// log2 of a power-of-two alignment, the form the IL's `align N` takes.
+fn log2_align(a : Int32) -> Int32 {
+  let mut r = 0
+  let mut x = a
+  while x > 1 {
+    x = x / 2
+    r = r + 1
+  }
+  r
+}
+
+///|
+// Register the QBE type for a C struct and return its index. The IL names an
+// aggregate return `:type.N`, and the target's ABI pass classifies that type to
+// decide between registers (x0/x1, d0/d1) and a hidden pointer (x8 on Apple
+// arm64). Unions and arrays have no IL field table here, so they fail loudly
+// rather than being laid out as something they are not.
+fn typ_of(c : Cg, ty : @sema.CType) -> Int32 {
+  match ty {
+    @sema.CStruct(id) =>
+      match c.typ_ids.get(id) {
+        Some(idx) => idx
+        None => {
+          let lay = c.layouts[id]
+          let fields : Array[(@types.FieldType, Int32)] = []
+          for f in lay.fields {
+            let (k, l) = match f.ty {
+              @sema.CStruct(_) | @sema.CUnion(_) =>
+                (@types.FTyp, typ_of(c, f.ty))
+              _ => {
+                let fs = size_of(f.ty, c.layouts)
+                if fs == 1 {
+                  (@types.Fb, 1)
+                } else if fs == 2 {
+                  (@types.Fh, 2)
+                } else if fs == 4 {
+                  (@types.Fw, 4)
+                } else {
+                  (@types.Fl, 8)
+                }
+              }
+            }
+            fields.push((k, l))
+          }
+          let idx = c.b.add_type(lay.name, log2_align(lay.align), fields)
+          c.typ_ids[id] = idx
+          idx
+        }
+      }
+    @sema.CUnion(_) => abort("typ_of: a union return is not implemented")
+    _ => -1
+  }
 }
 
 ///|
@@ -1066,16 +1123,11 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int32 {
         _ => false
       }
       let nfixed = ptypes.length()
-      let ret_aggr = is_composite(rty)
-      let sret_tmp = if ret_aggr {
-        c.alloc_slot(size_of(rty, c.layouts))
-      } else {
-        -1
-      }
+      let ret_aggr = rty is @sema.CStruct(_)
+      // An aggregate result needs its :type on the call, so the ABI pass can
+      // classify it the same way it classifies the definition.
+      let call_retty = if ret_aggr { typ_of(c, rty) } else { -1 }
       let arglist : Array[(@types.Class, Int32)] = []
-      if ret_aggr {
-        arglist.push((@types.Kl, sret_tmp))
-      }
       let mut ai = 0
       for a in args {
         let pty = if va {
@@ -1119,7 +1171,7 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int32 {
         }
         ai = ai + 1
       }
-      let call_ret = if ret_aggr { @ir_builder.Void } else { ret_of(rty) }
+      let call_ret = ret_of(rty)
       let direct = match callee.ty {
         @sema.CFunc(_, _, _) => true
         _ => false
@@ -1128,7 +1180,7 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int32 {
         if va {
           let fixed : Array[(@types.Class, Int32)] = []
           let rest : Array[(@types.Class, Int32)] = []
-          let limit = nfixed + (if ret_aggr { 1 } else { 0 })
+          let limit = nfixed
           let mut i = 0
           for a in arglist {
             if i < limit {
@@ -1138,19 +1190,17 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int32 {
             }
             i = i + 1
           }
-          c.b.call_vararg(c.fid, name, fixed, rest, call_ret)
+          c.b.call_vararg(c.fid, name, fixed, rest, call_ret, retty=call_retty)
         } else {
-          c.b.call(c.fid, name, arglist, call_ret)
+          c.b.call(c.fid, name, arglist, call_ret, retty=call_retty)
         }
       } else {
         let fp = c.gen_expr(callee)
-        c.b.call_value(c.fid, fp, arglist, call_ret)
+        c.b.call_value(c.fid, fp, arglist, call_ret, retty=call_retty)
       }
-      if ret_aggr {
-        sret_tmp
-      } else {
-        cv
-      }
+      // An aggregate call yields the address the ABI pass filled in, so the
+      // expression value is the call result itself.
+      cv
     }
     @sema.TCond(cond, t, f) => {
       let then_b = c.new_block("cond.then")
@@ -2084,13 +2134,11 @@ fn Cg::gen_stmt(c : Cg, s : @sema.TStmt) -> Unit {
       c.run_defers(0)
       match e {
         Some(x) =>
-          if c.ret_sret {
-            let src = c.gen_expr(x)
-            let sz = size_of(c.ret_ty, c.layouts)
-            if sz > 0 {
-              c.emit_memcpy(c.sret_ptr, src, sz)
-            }
-            c.b.ret(c.fid, -1)
+          if c.ret_typ >= 0 {
+            // An aggregate is returned by value: `ret` takes its address and
+            // the ABI pass decides where the bytes actually go.
+            let addr = c.gen_expr(x)
+            c.b.ret_wide(c.fid, addr)
           } else {
             let val = c.gen_expr(x)
             let v = c.convert(val, x.ty, c.ret_ty)
@@ -2351,12 +2399,12 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
     @sema.CFunc(r, ps, v) => (r, ps, v)
     _ => (@sema.CVoid, [], false)
   }
-  let ret_sret = is_composite(ret)
-  c.ret_sret = ret_sret
-  let pclasses : Array[@types.Class] = []
-  if ret_sret {
-    pclasses.push(@types.Kl)
+  let ret_typ = match ret {
+    @sema.CStruct(_) => typ_of(c, ret)
+    _ => -1
   }
+  c.ret_typ = ret_typ
+  let pclasses : Array[@types.Class] = []
   for p in ptypes {
     if is_composite(p) {
       let sz = size_of(p, c.layouts)
@@ -2372,16 +2420,7 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
       pclasses.push(cls_of(p))
     }
   }
-  let fid = c.b.add_func(
-    f.name,
-    if ret_sret {
-      @ir_builder.Void
-    } else {
-      ret_of(ret)
-    },
-    pclasses,
-    f.is_export,
-  )
+  let fid = c.b.add_func_ty(f.name, ret_typ, ret_of(ret), pclasses, f.is_export)
   c.fid = fid
   c.ret_ty = ret
   c.open = true
@@ -2395,13 +2434,6 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
     pvals.push(c.b.param(fid, j))
   }
   let mut pi = 0
-  c.sret_ptr = if ret_sret {
-    let sp = pvals[0]
-    pi = 1
-    sp
-  } else {
-    -1
-  }
   for i in 0..<f.params.length() {
     let (n, ty) = f.params[i]
     let raw = size_of(ty, c.layouts)
@@ -2507,8 +2539,12 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
   c.open = true
   c.gen_stmt(f.body)
   if c.open {
-    if c.ret_sret {
-      c.b.ret(fid, -1)
+    if c.ret_typ >= 0 {
+      // Falling off the end of an aggregate-returning function is undefined
+      // behaviour in C. Return a zeroed copy rather than a null pointer that
+      // the ABI pass would copy from.
+      let slot = c.alloc_slot(size_of(c.ret_ty, c.layouts))
+      c.b.ret_wide(fid, slot)
     } else {
       let v = match ret_of(c.ret_ty) {
         @ir_builder.Void => -1
@@ -2637,8 +2673,8 @@ pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
     cont_blks: [],
     ret_ty: @sema.CVoid,
     open: false,
-    ret_sret: false,
-    sret_ptr: -1,
+    ret_typ: -1,
+    typ_ids: Map::new(),
     scratch: -1,
     bump: 0,
     block_seq: 0,
