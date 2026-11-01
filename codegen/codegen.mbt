@@ -70,9 +70,8 @@ fn ret_of(ty : @sema.CType) -> @ir_builder.Ret {
     | @sema.CPtr(_)
     | @sema.CFunc(_, _, _)
     | @sema.CArray(_, _)
-    | @sema.CVLA(_, _)
-    | @sema.CUnion(_) => @ir_builder.Long
-    @sema.CStruct(_) => @ir_builder.Wide
+    | @sema.CVLA(_, _) => @ir_builder.Long
+    @sema.CStruct(_) | @sema.CUnion(_) => @ir_builder.Wide
     _ => @ir_builder.Word
   }
 }
@@ -563,53 +562,86 @@ fn log2_align(a : Int32) -> Int32 {
 }
 
 ///|
-// Register the QBE type for a C struct and return its index. The IL names an
-// aggregate return `:type.N`, and the target's ABI pass classifies that type to
-// decide between registers (x0/x1, d0/d1) and a hidden pointer (x8 on Apple
-// arm64). Unions and arrays have no IL field table here, so they fail loudly
-// rather than being laid out as something they are not.
-fn typ_of(c : Cg, ty : @sema.CType) -> Int32 {
+// The field entries one C member contributes to a QBE type table. A nested
+// aggregate becomes an FTyp reference to its own type; an array expands to the
+// element's entries, which is how the IL's `b 4` count is parsed too.
+fn typ_member_fields(
+  c : Cg,
+  ty : @sema.CType,
+) -> Array[(@types.FieldType, Int32)] {
   match ty {
-    @sema.CStruct(id) =>
-      match c.typ_ids.get(id) {
-        Some(idx) => idx
-        None => {
-          let lay = c.layouts[id]
-          let fields : Array[(@types.FieldType, Int32)] = []
-          for f in lay.fields {
-            // Map by C type, not by size: a double and a long are both 8
-            // bytes but live in different register files, and the ABI pass
-            // tells them apart through the :type field kinds only.
-            let (k, l) = match f.ty {
-              @sema.CStruct(_) | @sema.CUnion(_) =>
-                (@types.FTyp, typ_of(c, f.ty))
-              @sema.CFloat => (@types.Fs, 4)
-              @sema.CDouble | @sema.CLongDouble => (@types.Fd, 8)
-              @sema.CBool | @sema.CChar(_) => (@types.Fb, 1)
-              @sema.CShort(_) => (@types.Fh, 2)
-              @sema.CInt(_) | @sema.CBitInt(_) => (@types.Fw, 4)
-              @sema.CEnum(_) => {
-                // an enum is as wide as its underlying integer type
-                let fs = size_of(f.ty, c.layouts)
-                if fs == 1 {
-                  (@types.Fb, 1)
-                } else if fs == 2 {
-                  (@types.Fh, 2)
-                } else {
-                  (@types.Fw, 4)
-                }
-              }
-              _ => (@types.Fl, 8)
-            }
-            fields.push((k, l))
-          }
-          let idx = c.b.add_type(lay.name, log2_align(lay.align), fields)
-          c.typ_ids[id] = idx
-          idx
+    @sema.CArray(el, n) => {
+      let out : Array[(@types.FieldType, Int32)] = []
+      let one = typ_member_fields(c, el)
+      for _k in 0..<n {
+        for f in one {
+          out.push(f)
         }
       }
-    @sema.CUnion(_) => abort("typ_of: a union return is not implemented")
-    _ => -1
+      out
+    }
+    @sema.CStruct(_) | @sema.CUnion(_) => [(@types.FTyp, typ_of(c, ty))]
+    // Map by C type, not by size: a double and a long are both 8 bytes but
+    // live in different register files, and the ABI pass tells them apart
+    // through the :type field kinds only.
+    @sema.CFloat => [(@types.Fs, 4)]
+    @sema.CDouble | @sema.CLongDouble => [(@types.Fd, 8)]
+    @sema.CBool | @sema.CChar(_) => [(@types.Fb, 1)]
+    @sema.CShort(_) => [(@types.Fh, 2)]
+    @sema.CInt(_) | @sema.CBitInt(_) => [(@types.Fw, 4)]
+    @sema.CEnum(_) => {
+      // an enum is as wide as its underlying integer type
+      let fs = size_of(ty, c.layouts)
+      if fs == 1 {
+        [(@types.Fb, 1)]
+      } else if fs == 2 {
+        [(@types.Fh, 2)]
+      } else if fs == 8 {
+        [(@types.Fl, 8)]
+      } else {
+        [(@types.Fw, 4)]
+      }
+    }
+    _ => [(@types.Fl, 8)]
+  }
+}
+
+///|
+// Register the QBE type for a C struct or union and return its index. The IL
+// names an aggregate return after its type, and the target's ABI pass
+// classifies that type to decide between registers (x0/x1, d0/d1) and a hidden
+// pointer (x8 on Apple arm64). A union is one member list per C member, which
+// is the IL's nested-brace form: all members start at offset 0.
+fn typ_of(c : Cg, ty : @sema.CType) -> Int32 {
+  let id = match ty {
+    @sema.CStruct(id) | @sema.CUnion(id) => id
+    _ => return -1
+  }
+  match c.typ_ids.get(id) {
+    Some(idx) => idx
+    None => {
+      let lay = c.layouts[id]
+      let idx = match ty {
+        @sema.CUnion(_) => {
+          let members : Array[Array[(@types.FieldType, Int32)]] = []
+          for f in lay.fields {
+            members.push(typ_member_fields(c, f.ty))
+          }
+          c.b.add_union_type(lay.name, log2_align(lay.align), members)
+        }
+        _ => {
+          let fields : Array[(@types.FieldType, Int32)] = []
+          for f in lay.fields {
+            for entry in typ_member_fields(c, f.ty) {
+              fields.push(entry)
+            }
+          }
+          c.b.add_type(lay.name, log2_align(lay.align), fields)
+        }
+      }
+      c.typ_ids[id] = idx
+      idx
+    }
   }
 }
 
@@ -1131,7 +1163,7 @@ fn Cg::gen_expr(c : Cg, e : @sema.TExpr) -> Int32 {
         _ => false
       }
       let nfixed = ptypes.length()
-      let ret_aggr = rty is @sema.CStruct(_)
+      let ret_aggr = rty is @sema.CStruct(_) || rty is @sema.CUnion(_)
       // An aggregate result needs its :type on the call, so the ABI pass can
       // classify it the same way it classifies the definition.
       let call_retty = if ret_aggr { typ_of(c, rty) } else { -1 }
@@ -2447,7 +2479,7 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
     _ => (@sema.CVoid, [], false)
   }
   let ret_typ = match ret {
-    @sema.CStruct(_) => typ_of(c, ret)
+    @sema.CStruct(_) | @sema.CUnion(_) => typ_of(c, ret)
     _ => -1
   }
   c.ret_typ = ret_typ
@@ -2604,13 +2636,62 @@ fn Cg::gen_func(c : Cg, f : @sema.CheckedFunc) -> Unit {
 }
 
 ///|
+// Encode one byte as a fixed-width octal escape for GAS string literals.
+fn gas_octal_escape(value : Int32) -> String {
+  let sb = StringBuilder::new()
+  sb.write_char('\\')
+  sb.write_char(Char::from_int('0'.to_int() + value / 64))
+  sb.write_char(Char::from_int('0'.to_int() + value / 8 % 8))
+  sb.write_char(Char::from_int('0'.to_int() + value % 8))
+  sb.to_string()
+}
+
+///|
+// Escape decoded C string bytes at the QBE emission boundary.
+//
+// A decoded C literal is a byte string, not text: "\303\251" and "é" both mean
+// the two bytes 0xC3 0xA9, and Qiang stores them one char per byte. QBE hands
+// this text to the assembler (`.ascii`) or to the object writer's escape
+// decoder, and both must see the same bytes, so everything that is not
+// printable ASCII is spelled as fixed-width octal: GAS would otherwise reject
+// (or misread) \a, \e and \v, raw control characters break the source line,
+// and writing a byte above 0x7F as a char would re-encode it as UTF-8. Octal is
+// the one spelling the assembler and `decode_data_string` agree on.
+fn gas_escape_data_string(s : String) -> String {
+  let sb = StringBuilder::new()
+  for ch in s {
+    let value = ch.to_int()
+    match value {
+      10 => sb.write_string("\\n")
+      9 => sb.write_string("\\t")
+      13 => sb.write_string("\\r")
+      92 => sb.write_string("\\\\")
+      34 => sb.write_string("\\\"")
+      _ =>
+        if value >= 32 && value < 127 {
+          sb.write_char(Char::from_int(value))
+        } else if value <= 255 {
+          sb.write_string(gas_octal_escape(value))
+        } else {
+          // not a byte: leave it alone rather than invent an escape
+          sb.write_char(ch)
+        }
+    }
+  }
+  sb.to_string()
+}
+
+///|
 /// Lower a checked program to the QBE builder.
 pub fn compile_program(p : @sema.CheckedProgram) -> @ir_builder.Builder raise {
   let b = @ir_builder.Builder::new()
   let strs : Array[String] = []
   for i in 0..<p.strings.length() {
     let label = "qiang_str_" + i.to_string()
-    b.data_string(label, false, p.strings[i] + "\\0")
+    // The IR string is escape text, not the bytes themselves: both routes
+    // decode it (the assembler for --emit asm, decode_data_string for the
+    // object image), so the bytes are spelled once here.
+    b.data_string(label, false, gas_escape_data_string(p.strings[i]) + "\\0")
     strs.push(label)
   }
   for g in p.globals {

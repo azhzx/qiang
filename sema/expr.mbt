@@ -217,14 +217,15 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
       )
     }
     @front.EString(parts) => {
+      // Decode every part first: C concatenates the decoded literals, so
+      // "\x9" "0" is the two bytes 9 and '0', not the single byte 0x90 that
+      // joining the raw text first would produce.
       let mut joined = ""
       for p in parts {
-        joined = joined + p
+        joined = joined + decode_string(p)
       }
       let idx = ctx.strings.length()
-      // Global initialisers decode through decode_string; this path used to
-      // store the raw text, so \e reached the object file as two bytes.
-      ctx.strings.push(decode_string(joined))
+      ctx.strings.push(joined)
       mk_expr(TStr(idx), CPtr(CChar(true)), false)
     }
     @front.EIdent(n) =>
@@ -540,7 +541,9 @@ pub fn check_expr(e : @front.Expr, ctx : Ctx) -> TExpr {
       }
     }
     @front.EStmtExpr(items) => {
+      ctx.scopes.push()
       let body = check_block_items(items, ctx)
+      ctx.scopes.pop()
       let n = body.length()
       let ty = if n > 0 {
         match body[n - 1].kind {

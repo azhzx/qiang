@@ -10,8 +10,9 @@ Writes build/scan/detail_new.tsv and build/scan/summary_new.tsv, and prints a
 per-file diff against the stage recorded in the report.
 """
 import concurrent.futures as cf
+import json
 import os
-import sys, re, subprocess, sys
+import sys, re, subprocess
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOC = os.path.join(ROOT, "doc", "qiang-external-scan.md")

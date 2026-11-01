@@ -36,6 +36,8 @@ pub fn decode_string(String) -> String
 
 pub fn encode_global_init(@front.Initializer, CType, Int32, Array[Byte], Array[(Int32, GlobalReloc)], Ctx) -> Unit
 
+pub fn expr_type_undecayed(@front.Expr, Ctx) -> CType
+
 pub fn func_params(@front.Declarator) -> Array[@front.ParamDecl]
 
 pub fn has_auto_type(@front.DeclSpec) -> Bool
@@ -274,6 +276,7 @@ pub(all) enum TExprKind {
   TAssign(TExpr, TExpr)
   TCall(String, TExpr, Array[TExpr])
   TCond(TExpr, TExpr, TExpr)
+  TElvis(TExpr, TExpr)
   TCast(TExpr)
   TMember(TExpr, Int32)
   TTaggedMember(TExpr, Int32, Int64)

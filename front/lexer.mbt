@@ -306,6 +306,21 @@ fn num_digit_in(c : Char, is_hex : Bool, is_bin : Bool) -> Bool {
 }
 
 ///|
+// C literal contents are bytes, but the scanner sees source text as decoded
+// chars: a non-ASCII char has to be re-encoded to the UTF-8 bytes it was read
+// from, or "\u00e9" in the source would become the single byte 0xE9 instead of
+// the two bytes C3 A9 that clang and every other compiler put in the object.
+fn write_literal_char(sb : StringBuilder, c : Char) -> Unit {
+  if c.to_int() < 128 {
+    sb.write_char(c)
+  } else {
+    for b in @utf8.encode(c.to_string()) {
+      sb.write_char(Char::from_int(b.to_int()))
+    }
+  }
+}
+
+///|
 fn Scanner::read_quoted(self : Scanner, delim : Char) -> String {
   let sb = StringBuilder::new()
   let mut stop = false
@@ -328,7 +343,7 @@ fn Scanner::read_quoted(self : Scanner, delim : Char) -> String {
         } else if c == '\n' {
           stop = true
         } else {
-          sb.write_char(c)
+          write_literal_char(sb, c)
           self.bump(1)
         }
       [] => stop = true

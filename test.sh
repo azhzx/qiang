@@ -98,6 +98,20 @@ for c in "$here"/tests/*.c; do
   "$tmp/$base.ref" >"$tmp/$base.ref.out" 2>&1
   refcode=$?
   set -e
+  case "$hdr" in
+    *"gas-asm"*)
+      if ! "$exe" "$Qiang_src" $std --emit asm >"$tmp/$base.s" 2>"$tmp/$base.err"; then
+        echo "FAIL $base (Qiang assembly emission)"
+        fail=$((fail + 1))
+        continue
+      fi
+      if ! /usr/bin/clang -target aarch64-unknown-linux-gnu -c "$tmp/$base.s" -o "$tmp/$base.asm.o" 2>"$tmp/$base.asm.err"; then
+        echo "FAIL $base (gas assembler rejected Qiang output)"
+        fail=$((fail + 1))
+        continue
+      fi
+      ;;
+  esac
   if ! "$exe" "$Qiang_src" $std $extra -o "$tmp/$base.o" 2>"$tmp/$base.err"; then
     echo "FAIL $base (Qiang compile)"
     fail=$((fail + 1))

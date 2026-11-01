@@ -51,12 +51,13 @@ fn put_str(bytes : Array[Byte], off : Int32, s : String) -> Int32 {
 fn ptr_reloc(e : @front.Expr, elem : CType, ctx : Ctx) -> GlobalReloc? {
   match e {
     @front.EString(parts) => {
+      // decode each part before concatenating, like sema.expr does
       let mut joined = ""
       for p in parts {
-        joined = joined + p
+        joined = joined + decode_string(p)
       }
       let idx = ctx.strings.length()
-      ctx.strings.push(decode_string(joined))
+      ctx.strings.push(joined)
       Some(RString(idx, 0))
     }
     @front.EIdent(n) => Some(RGlobal(n, 0))
@@ -154,10 +155,9 @@ pub fn encode_global_init(
             @front.EString(parts) => {
               let mut joined = ""
               for p in parts {
-                joined = joined + p
+                joined = joined + decode_string(p)
               }
-              let s = decode_string(joined)
-              let written = put_str(bytes, off, s)
+              let written = put_str(bytes, off, joined)
               if n == 0 || written < size_of_ty(el, ctx.layouts) * n {
                 ensure_len(bytes, off + written + 1)
               }

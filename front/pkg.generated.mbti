@@ -92,6 +92,7 @@ pub(all) enum Expr {
   EUnary(String, Expr)
   EPostfix(String, Expr)
   ECond(Expr, Expr, Expr)
+  ECondElvis(Expr, Expr)
   EAssign(String, Expr, Expr)
   ECast(DeclSpec, Declarator, Expr)
   ESizeofExpr(Expr)

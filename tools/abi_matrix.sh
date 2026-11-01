@@ -26,11 +26,19 @@ typedef struct { long a, b, c; } Big;
 typedef struct { int x; double y; } Mix;
 typedef struct { long a; } One;
 typedef struct { double a, b; } Hfa;
+typedef union { long l; double d; } UL;
+typedef union { double a, b; } UF;
+typedef struct { int tag; union { int i; double d; } u; } Tagged;
+typedef struct { char buf[8]; } Arr8;
 long sum3(long a, long b, long c) { return a + b + c; }
 Big bigmake(long a, long b, long c) { Big r = {a, b, c}; return r; }
 Mix mixmake(int x, double y) { Mix m = {x, y}; return m; }
 One onemake(long a) { One o = {a}; return o; }
 Hfa hfamake(double a, double b) { Hfa h = {a, b}; return h; }
+UL ulmake(long v) { UL u; u.l = v; return u; }
+UF ufmake(double a, double b) { UF u; u.a = a; u.b = b; return u; }
+Tagged tagmake(int t, int i) { Tagged x; x.tag = t; x.u.i = i; return x; }
+Arr8 arrmake(char c) { Arr8 a; for (int i = 0; i < 8; i++) a.buf[i] = (char)(c + i); return a; }
 double vsum(int n, ...) { va_list ap; va_start(ap, n); double s = 0;
   for (int i = 0; i < n; i++) s += va_arg(ap, double); va_end(ap); return s; }
 int apply(int (*f)(int), int v) { return f(v); }
@@ -45,11 +53,19 @@ typedef struct { long a, b, c; } Big;
 typedef struct { int x; double y; } Mix;
 typedef struct { long a; } One;
 typedef struct { double a, b; } Hfa;
+typedef union { long l; double d; } UL;
+typedef union { double a, b; } UF;
+typedef struct { int tag; union { int i; double d; } u; } Tagged;
+typedef struct { char buf[8]; } Arr8;
 long sum3(long, long, long);
 Big bigmake(long, long, long);
 Mix mixmake(int, double);
 One onemake(long);
 Hfa hfamake(double, double);
+UL ulmake(long);
+UF ufmake(double, double);
+Tagged tagmake(int, int);
+Arr8 arrmake(char);
 double vsum(int, ...);
 int apply(int (*)(int), int);
 long many(int,int,int,int,int,int,int,int,int);
@@ -65,6 +81,10 @@ int main(int argc, char **argv) {
   case 'f': printf("%.1f\n", vsum(3, 1.0, 2.0, 3.5)); break;
   case 'g': printf("%d\n", apply(dbl, 21)); break;
   case 'h': printf("%ld\n", many(1,2,3,4,5,6,7,8,9)); break;
+  case 'i': { UL u = ulmake(11); printf("%ld\n", u.l); break; }
+  case 'j': { UF u = ufmake(1.5, 2.5); printf("%.1f %.1f\n", u.a, u.b); break; }
+  case 'k': { Tagged t = tagmake(3, 42); printf("%d %d\n", t.tag, t.u.i); break; }
+  case 'l': { Arr8 a = arrmake('a'); printf("%c%c\n", a.buf[0], a.buf[7]); break; }
   }
   return 0;
 }
@@ -85,7 +105,7 @@ link "$tmp/allq"  "$tmp/libq.o"  "$tmp/mainq.o"
 
 printf '%-4s %-16s %-16s %-16s %-16s\n' case all-clang lib=Qiang main=Qiang all-Qiang
 fail=0
-for c in a b c d e f g h; do
+for c in a b c d e f g h i j k l; do
   ref=$("$tmp/allc" "$c" 2>/dev/null || echo CRASH)
   a=$("$tmp/libq" "$c" 2>/dev/null || echo CRASH)
   b=$("$tmp/mainq" "$c" 2>/dev/null || echo CRASH)

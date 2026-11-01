@@ -143,3 +143,70 @@ test "sema: inline linkage follows C99 6.7.4p6" {
   assert_eq(st.diags.length(), 0)
   assert_true(!st.funcs[0].is_export)
 }
+
+///|
+fn stmt_expr_size(e : TExpr) -> Int32 raise Failure {
+  match e.kind {
+    TStmtExpr(items) =>
+      match items[items.length() - 1].kind {
+        KSExpr(Some(last)) =>
+          match last.kind {
+            TSizeof(n) => n
+            _ => fail("expected sizeof expression")
+          }
+        _ => fail("expected final expression")
+      }
+    _ => fail("expected statement expression")
+  }
+}
+
+///|
+test "sema: statement expression recursive struct tag has block layout" {
+  let r = check(
+    @front.parse(
+      "int f() { return ({ struct T { struct T *next; int x; } a; sizeof(struct T); }); }",
+    ),
+  )
+  assert_eq(r.diags.length(), 0)
+  match r.funcs[0].body.kind {
+    KSBlock(stmts) =>
+      match stmts[stmts.length() - 1].kind {
+        KSReturn(Some(e)) => assert_eq(stmt_expr_size(e), 16)
+        _ => fail("expected return")
+      }
+    _ => fail("expected function body")
+  }
+}
+
+///|
+test "sema: statement expression tags use block scope" {
+  let r = check(
+    @front.parse(
+      "int f() { ({ struct T { struct T *next; int x; } a; sizeof(struct T); }); return ({ typedef struct T T; struct T { int x; }; sizeof(T); }); }",
+    ),
+  )
+  assert_eq(r.diags.length(), 0)
+  match r.funcs[0].body.kind {
+    KSBlock(stmts) => {
+      match stmts[0].kind {
+        KSExpr(Some(e)) => assert_eq(stmt_expr_size(e), 16)
+        _ => fail("expected statement expression")
+      }
+      match stmts[stmts.length() - 1].kind {
+        KSReturn(Some(e)) => assert_eq(stmt_expr_size(e), 4)
+        _ => fail("expected return")
+      }
+    }
+    _ => fail("expected function body")
+  }
+}
+
+///|
+test "sema: recursive struct reference sees shadowing tag" {
+  let r = check(
+    @front.parse(
+      "struct T { int outer; }; int f() { return ({ struct T { struct T *next; int inner; } a; a.next->inner; }); }",
+    ),
+  )
+  assert_eq(r.diags.length(), 0)
+}

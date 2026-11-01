@@ -273,6 +273,63 @@ fn pack_align(a : Int32, pack : Int32) -> Int32 {
 }
 
 ///|
+/// Reserve a named aggregate's layout in the current tag scope before reading
+/// its members. This makes self-references bind to a shadowing tag, not to an
+/// outer layout that happens to have the same spelling.
+fn reserve_aggregate_layout(
+  ctx : Ctx,
+  tag : String?,
+  is_union : Bool,
+  tagged : Bool,
+) -> Int32 {
+  match tag {
+    Some(name) =>
+      match ctx.scopes.lookup_tag_current(name) {
+        Some(i) => {
+          let old = ctx.layouts[i]
+          if old.is_union == is_union &&
+            old.tagged == tagged &&
+            old.enum_ty is None &&
+            old.fields.length() == 0 {
+            i
+          } else {
+            new_aggregate_layout(ctx, tag, is_union, tagged)
+          }
+        }
+        None => new_aggregate_layout(ctx, tag, is_union, tagged)
+      }
+    None => new_aggregate_layout(ctx, tag, is_union, tagged)
+  }
+}
+
+///|
+fn new_aggregate_layout(
+  ctx : Ctx,
+  tag : String?,
+  is_union : Bool,
+  tagged : Bool,
+) -> Int32 {
+  let idx = ctx.layouts.length()
+  ctx.layouts.push({
+    name: tag.unwrap_or(""),
+    is_union,
+    fields: [],
+    size: 0,
+    align: 1,
+    enum_vals: [],
+    enum_ty: None,
+    tagged,
+    payload_off: 0,
+    tag_vals: [],
+  })
+  match tag {
+    Some(name) => ctx.scopes.define_tag(name, idx)
+    None => ()
+  }
+  idx
+}
+
+///|
 fn resolve_aggregate(
   ctx : Ctx,
   tag : String?,
@@ -330,6 +387,7 @@ fn define_tagged_union(
   tag : String?,
   body : Array[@front.StructDecl],
 ) -> CType {
+  let idx = reserve_aggregate_layout(ctx, tag, false, true)
   let fields : Array[Field] = []
   let tag_vals : Array[(String, Int64)] = []
   let mut maxa = 1
@@ -380,12 +438,8 @@ fn define_tagged_union(
   let payload_off = align_up(4, maxa)
   let align = if maxa > 4 { maxa } else { 4 }
   let size = align_up(payload_off + maxsz, align)
-  let idx = ctx.layouts.length()
-  ctx.layouts.push({
-    name: match tag {
-      Some(t) => t
-      None => ""
-    },
+  ctx.layouts[idx] = {
+    name: tag.unwrap_or(""),
     is_union: false,
     fields,
     size,
@@ -395,10 +449,6 @@ fn define_tagged_union(
     tagged: true,
     payload_off,
     tag_vals,
-  })
-  match tag {
-    Some(t) => ctx.scopes.define_tag(t, idx)
-    None => ()
   }
   CStruct(idx)
 }
@@ -411,6 +461,7 @@ fn define_aggregate(
   is_union : Bool,
   pack : Int32,
 ) -> Int32 {
+  let idx = reserve_aggregate_layout(ctx, tag, is_union, false)
   let fields : Array[Field] = []
   let mut off = 0
   let mut maxa = 1
@@ -534,7 +585,7 @@ fn define_aggregate(
   if fields.length() > 0 {
     match tag {
       Some(t) =>
-        match ctx.scopes.lookup_tag(t) {
+        match ctx.scopes.lookup_tag_current(t) {
           Some(i) =>
             if ctx.layouts[i].fields.length() == 0 {
               ctx.layouts[i] = {
@@ -556,8 +607,7 @@ fn define_aggregate(
       None => ()
     }
   }
-  let idx = ctx.layouts.length()
-  ctx.layouts.push({
+  ctx.layouts[idx] = {
     name,
     is_union,
     fields,
@@ -568,10 +618,6 @@ fn define_aggregate(
     tagged: false,
     payload_off: 0,
     tag_vals: [],
-  })
-  match tag {
-    Some(t) => ctx.scopes.define_tag(t, idx)
-    None => ()
   }
   idx
 }

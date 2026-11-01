@@ -93,3 +93,8 @@ pub fn ScopeStack::lookup_tag(self : ScopeStack, name : String) -> Int32? {
   }
   None
 }
+
+///|
+fn ScopeStack::lookup_tag_current(self : ScopeStack, name : String) -> Int32? {
+  self.tags[self.tags.length() - 1].get(name)
+}
